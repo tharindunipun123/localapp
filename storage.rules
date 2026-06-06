@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidImage() {
+      return request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType != null &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    function isValidPdf() {
+      return request.resource.size < 15 * 1024 * 1024 &&
+        request.resource.contentType == 'application/pdf';
+    }
+
+    function isFirestoreAdmin() {
+      return isSignedIn() &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'Admin', 'ADMIN'];
+    }
+
+    match /events/{eventId}/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isValidImage();
+    }
+
+    // Admin UI is role-guarded; signed-in upload avoids flaky cross-service isAdmin() lookups
+    match /places/{placeId}/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isValidImage();
+    }
+
+    match /chat/{eventId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidImage();
+    }
+
+    match /kyc/{userId}/{fileName} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        isFirestoreAdmin()
+      );
+      allow write: if isSignedIn() && request.auth.uid == userId && isValidImage();
+    }
+
+    match /matrimonial/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId && isValidImage();
+    }
+
+    match /vendors/{vendorId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == vendorId && (isValidImage() || isValidPdf());
+    }
+
+    match /vendors/{vendorId}/registration/{fileName} {
+      allow read: if isSignedIn() && (request.auth.uid == vendorId || isFirestoreAdmin());
+      allow write: if isSignedIn() && request.auth.uid == vendorId && isValidPdf();
+    }
+  }
+}

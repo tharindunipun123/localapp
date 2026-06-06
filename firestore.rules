@@ -1,0 +1,350 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'Admin', 'ADMIN'])
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isApprovedVendor() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorStatus == 'approved';
+    }
+
+    function isActiveMember(eventId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/eventGroups/$(eventId)/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/eventGroups/$(eventId)/members/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function isGroupModerator(eventId) {
+      let member = get(/databases/$(database)/documents/eventGroups/$(eventId)/members/$(request.auth.uid)).data;
+      return member.role in ['owner', 'moderator'] && member.status == 'active';
+    }
+
+    // Users — any signed-in user can read profiles; admins can list all
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isOwner(userId) &&
+        request.resource.data.role == 'user';
+      allow update: if isAdmin() ||
+        (isOwner(userId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'vendorStatus', 'kycStatus']));
+    }
+
+    // Vendors
+    match /vendors/{vendorId} {
+      allow get: if resource.data.status == 'active' || isOwner(vendorId) || isAdmin();
+      allow list: if isAdmin() ||
+        resource.data.status == 'active' ||
+        isOwner(vendorId);
+      allow create: if isOwner(vendorId) && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAdmin() ||
+        (isOwner(vendorId) && resource.data.status in ['pending', 'rejected']);
+    }
+
+    // Loyalty programs
+    match /loyaltyPrograms/{programId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /loyaltyGrants/{grantId} {
+      allow get: if isAdmin() ||
+        (isSignedIn() && (resource.data.vendorId == request.auth.uid || resource.data.userId == request.auth.uid));
+      allow list: if isAdmin() ||
+        (isSignedIn() && (resource.data.vendorId == request.auth.uid || resource.data.userId == request.auth.uid));
+      allow write: if false;
+    }
+
+    // Promo codes
+    match /promoCodes/{promoId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /promoRedemptions/{redemptionId} {
+      allow get: if isAdmin() || isOwner(resource.data.userId);
+      allow list: if isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /phoneOtps/{userId} {
+      allow read, write: if false;
+    }
+
+    // KYC
+    match /kycSubmissions/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    // QR tokens
+    match /userQrTokens/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    // Vendor wallets
+    match /vendorWallets/{vendorId} {
+      allow get: if isOwner(vendorId) || isAdmin();
+      allow list: if isAdmin() || isOwner(vendorId);
+      allow write: if false;
+    }
+
+    match /withdrawalRequests/{requestId} {
+      allow get: if isAdmin() ||
+        (isSignedIn() && resource.data.vendorId == request.auth.uid);
+      allow list: if isAdmin() ||
+        (isSignedIn() && resource.data.vendorId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /poolTopUpRequests/{requestId} {
+      allow get: if isAdmin() ||
+        (isSignedIn() && resource.data.vendorId == request.auth.uid);
+      allow list: if isAdmin() ||
+        (isSignedIn() && resource.data.vendorId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /corporateBindings/{bindingId} {
+      allow get: if isAdmin() ||
+        (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.vendorId == request.auth.uid));
+      allow list: if isAdmin() ||
+        (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.vendorId == request.auth.uid));
+      allow write: if false;
+    }
+
+    match /eventCheckIns/{checkInId} {
+      allow read: if isAdmin() || isSignedIn();
+      allow write: if false;
+    }
+
+    // Events
+    match /events/{eventId} {
+      allow get: if resource.data.status == 'approved' ||
+        resource.data.status == 'expired' ||
+        isOwner(resource.data.createdBy) ||
+        isAdmin();
+
+      allow list: if isAdmin() ||
+        resource.data.status == 'approved' ||
+        resource.data.status == 'expired' ||
+        isOwner(resource.data.createdBy);
+
+      allow create: if isSignedIn() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.isFeatured == false;
+
+      allow update: if isAdmin() ||
+        (isOwner(resource.data.createdBy) &&
+          resource.data.status in ['pending', 'rejected'] &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.createdBy == resource.data.createdBy);
+
+      allow delete: if isAdmin();
+    }
+
+    // Places
+    match /places/{placeId} {
+      allow get: if resource.data.status == 'active' || isAdmin();
+      allow list: if isAdmin() || resource.data.status == 'active';
+      allow write: if isAdmin();
+    }
+
+    // Reviews
+    match /reviews/{reviewId} {
+      allow get: if resource.data.status == 'published' || isAdmin() || isOwner(resource.data.userId);
+      allow list: if isAdmin() ||
+        resource.data.status == 'published' ||
+        isOwner(resource.data.userId);
+
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'published' &&
+        request.resource.data.rating >= 1 &&
+        request.resource.data.rating <= 5;
+
+      allow update: if isAdmin() ||
+        (isOwner(resource.data.userId) &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.status in ['published', 'reported']);
+
+      allow delete: if isAdmin();
+    }
+
+    // Event Groups
+    match /eventGroups/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() &&
+        request.resource.data.eventId == eventId &&
+        request.resource.data.createdBy ==
+          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy;
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.createdBy == request.auth.uid ||
+        exists(/databases/$(database)/documents/eventGroups/$(eventId)/members/$(request.auth.uid))
+      );
+
+      match /members/{memberId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() &&
+          (memberId == request.auth.uid ||
+           get(/databases/$(database)/documents/eventGroups/$(eventId)).data.createdBy == request.auth.uid);
+        allow update: if isAdmin() ||
+          get(/databases/$(database)/documents/eventGroups/$(eventId)).data.createdBy == request.auth.uid ||
+          memberId == request.auth.uid;
+        allow delete: if isAdmin() ||
+          get(/databases/$(database)/documents/eventGroups/$(eventId)).data.createdBy == request.auth.uid;
+      }
+
+      match /messages/{messageId} {
+        allow read: if isActiveMember(eventId) || isAdmin();
+        allow create: if isActiveMember(eventId) &&
+          request.resource.data.senderId == request.auth.uid;
+        allow update: if isAdmin() ||
+          isGroupModerator(eventId) ||
+          (isActiveMember(eventId) && resource.data.senderId == request.auth.uid);
+        allow delete: if isAdmin() || isGroupModerator(eventId);
+      }
+    }
+
+    // Wallets — read only, writes via Cloud Functions
+    match /wallets/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin() || isOwner(userId);
+      allow write: if false;
+    }
+
+    // Transactions — read only for owner/admin, writes via Cloud Functions
+    match /transactions/{transactionId} {
+      allow get: if isOwner(resource.data.userId) ||
+        isAdmin() ||
+        (isSignedIn() && resource.data.vendorId == request.auth.uid);
+      allow list: if isAdmin() ||
+        isOwner(resource.data.userId) ||
+        (isSignedIn() && resource.data.vendorId == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Tickets — read for owner/admin, writes via Cloud Functions
+    match /tickets/{ticketId} {
+      allow get: if isOwner(resource.data.userId) || isAdmin();
+      allow list: if isAdmin() || isOwner(resource.data.userId);
+      allow write: if false;
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read: if isOwner(resource.data.userId);
+      allow write: if false;
+    }
+
+    // Settings
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Audit logs
+    match /auditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow write: if false;
+    }
+
+    // Lotteries
+    match /lotteries/{lotteryId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /lotteryEntries/{entryId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Matrimonial profiles
+    match /matrimonialProfiles/{profileId} {
+      // Profile owner and admin can always read; others can read active profiles
+      allow get: if isSignedIn() && (isAdmin() || resource.data.isActive == true || isOwner(profileId));
+      allow list: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /matrimonialPhotoQueue/{docId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    match /matrimonialProfileViews/{viewId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.viewerId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /matrimonialInterests/{interestId} {
+      allow get: if isAdmin() ||
+        (isSignedIn() && (resource.data.fromUserId == request.auth.uid || resource.data.toUserId == request.auth.uid));
+      allow list: if isAdmin() ||
+        (isSignedIn() && (resource.data.fromUserId == request.auth.uid || resource.data.toUserId == request.auth.uid));
+      allow write: if false;
+    }
+
+    match /chatMessageReports/{reportId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.reporterId == request.auth.uid);
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    // Chat groups — REQ-CHT-003
+    match /chatGroups/{groupId} {
+      function isChatGroupMember() {
+        return isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/chatGroups/$(groupId)).data.memberIds;
+      }
+
+      function chatGroupNotArchived() {
+        return get(/databases/$(database)/documents/chatGroups/$(groupId)).data.isArchived != true;
+      }
+
+      allow get: if isSignedIn() && (
+        isAdmin() || request.auth.uid in resource.data.memberIds
+      );
+      allow list: if isSignedIn();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+
+      // Messages — clients write directly for low-latency real-time chat (REQ-CHT-004)
+      match /messages/{messageId} {
+        allow read: if isChatGroupMember() || isAdmin();
+        allow create: if isChatGroupMember() &&
+          chatGroupNotArchived() &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.keys().hasAll(['senderId', 'content', 'type', 'createdAt']);
+        allow update: if isAdmin() ||
+          (isChatGroupMember() && resource.data.senderId == request.auth.uid);
+        allow delete: if isAdmin();
+      }
+    }
+  }
+}
