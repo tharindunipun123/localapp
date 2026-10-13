@@ -4,10 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { AuthShell } from "@/components/layout/AuthShell";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { loginWithEmail, loginWithGoogle } from "@/lib/firebase/auth";
+import { loginWithEmail, loginWithGoogle, sendPasswordReset } from "@/lib/firebase/auth";
+import { assertLoginNotLocked, recordLoginFailure, clearLoginFailures } from "@/lib/services/loginLock";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,16 +17,41 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState("");
 
   async function handleEmailLogin(e) {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
+      await assertLoginNotLocked(email);
       await loginWithEmail(email, password);
+      sessionStorage.setItem("la_session", String(Date.now()));
+      await clearLoginFailures(email).catch(() => {});
       router.push("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
+      const msg = err instanceof Error ? err.message : "Sign in failed";
+      if (!msg.includes("locked")) {
+        await recordLoginFailure(email).catch(() => {});
+      }
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleReset() {
+    if (!email) {
+      setError("Enter your email first, then request a reset.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      await sendPasswordReset(email);
+      setResetSent("Password reset email sent.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send reset email");
     } finally {
       setLoading(false);
     }
@@ -45,7 +72,7 @@ export default function LoginPage() {
 
   return (
     <PublicLayout>
-      <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
+      <AuthShell>
         <Card className="w-full">
           <CardHeader title="Sign in" subtitle="Welcome back to Local App Sri Lanka" />
           {error && (
@@ -72,6 +99,14 @@ export default function LoginPage() {
               Sign in
             </Button>
           </form>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="mt-3 w-full text-center text-sm text-[var(--color-primary)] hover:underline"
+          >
+            Forgot password?
+          </button>
+          {resetSent && <p className="mt-2 text-center text-sm text-[var(--color-success-fg)]">{resetSent}</p>}
           <div className="my-4 flex items-center gap-3">
             <div className="h-px flex-1 bg-[var(--color-border)]" />
             <span className="text-xs text-[var(--color-muted-fg)]">OR</span>
@@ -95,7 +130,7 @@ export default function LoginPage() {
             </Link>
           </p>
         </Card>
-      </div>
+      </AuthShell>
     </PublicLayout>
   );
 }

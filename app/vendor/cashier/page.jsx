@@ -226,7 +226,7 @@ export default function VendorCashierPage() {
     setLoading(true);
     setMsg("");
     try {
-      await checkInEvent(eventId, qrValue.trim());
+      await checkInEvent(eventId.trim() || undefined, qrValue.trim());
       setMsg("Check-in successful");
       setQrValue("");
     } catch (err) {
@@ -377,15 +377,14 @@ export default function VendorCashierPage() {
 
       {tab === "checkin" && (
         <Card>
-          <CardHeader title="Event check-in" subtitle="REQ-VND-010" />
+          <CardHeader title="Event check-in" subtitle="Scan ticket QR or attendee user QR" />
           <form onSubmit={handleCheckIn} className="space-y-3">
             <Input
-              label="Event ID"
+              label="Event ID (optional if scanning a ticket QR)"
               value={eventId}
               onChange={(e) => setEventId(e.target.value)}
-              required
             />
-            <QrInput label="Attendee QR" value={qrValue} onChange={setQrValue} required />
+            <QrInput label="Ticket or attendee QR" value={qrValue} onChange={setQrValue} required />
             <Button type="submit" loading={loading}>
               Check in
             </Button>

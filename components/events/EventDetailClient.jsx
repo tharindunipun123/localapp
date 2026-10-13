@@ -19,6 +19,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { Input } from "@/components/ui/Input";
 import { purchaseTicket } from "@/lib/services/wallet";
 import { validatePromoCode } from "@/lib/services/promo";
+import { createEventChatGroup, joinEventChatGroup } from "@/lib/services/cloudFunctions";
 import { geoPointToLatLng } from "@/lib/utils/geohash";
 import { getEventsNearPlace } from "@/lib/services/events";
 import { resolveImageUrl } from "@/lib/services/storage";
@@ -65,6 +66,7 @@ export function EventDetailClient({ event: initialEvent, slug: slugProp }) {
   const [loading, setLoading] = useState(!initialEvent && !!slug);
   const [nearby, setNearby] = useState([]);
   const [buying, setBuying] = useState(false);
+  const [joiningChat, setJoiningChat] = useState(false);
   const [error, setError] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [promoDiscount, setPromoDiscount] = useState(null);
@@ -130,6 +132,29 @@ export function EventDetailClient({ event: initialEvent, slug: slugProp }) {
       setError(err instanceof Error ? err.message : "Failed to purchase ticket");
     } finally {
       setBuying(false);
+    }
+  }
+
+  async function handleEventChat() {
+    if (!profile) {
+      router.push("/login");
+      return;
+    }
+    if (!eventData) return;
+    setJoiningChat(true);
+    setError("");
+    try {
+      let groupId = eventData.chatGroupId;
+      if (!groupId) {
+        const created = await createEventChatGroup(eventData.id);
+        groupId = created.groupId;
+      }
+      await joinEventChatGroup(groupId);
+      router.push(`/chat/${groupId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open event chat");
+    } finally {
+      setJoiningChat(false);
     }
   }
 
@@ -277,11 +302,9 @@ export function EventDetailClient({ event: initialEvent, slug: slugProp }) {
               </div>
             )}
             {eventData.chatEnabled && (
-              <Link href={`/events/${eventData.seoSlug}/chat`} className="mt-3 block">
-                <Button variant="outline" className="w-full">
-                  <MessageCircle className="h-4 w-4" /> Event Chat
-                </Button>
-              </Link>
+              <Button variant="outline" className="mt-3 w-full" onClick={handleEventChat} loading={joiningChat}>
+                <MessageCircle className="h-4 w-4" /> Event Chat
+              </Button>
             )}
           </Card>
         </div>

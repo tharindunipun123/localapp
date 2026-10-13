@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Upload, X, ZoomIn } from "lucide-react";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { resolveImageUrl, validateImageFile } from "@/lib/services/storage";

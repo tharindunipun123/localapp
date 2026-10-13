@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { PageHero } from "@/components/layout/PageHero";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { EventCardSkeleton } from "@/components/ui/Skeleton";
 import { Select } from "@/components/ui/Select";
@@ -86,14 +87,16 @@ export default function PlacesPageContent() {
 
   return (
     <PublicLayout>
+      <PageHero
+        compact
+        segment="places"
+        image="/images/hero-places.png"
+        eyebrow="Discover"
+        title="Landmarks and attractions"
+        subtitle="Explore Sri Lanka with curated places and nearby search."
+      />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--color-fg)]">Places</h1>
-            <p className="mt-1 text-[var(--color-muted)]">
-              Explore landmarks and attractions across Sri Lanka
-            </p>
-          </div>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
           <Select
             options={[
               { value: "attraction", label: "Attractions" },

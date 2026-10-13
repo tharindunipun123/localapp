@@ -20,6 +20,56 @@ import {
 
 const REGION = "us-central1";
 
+export async function ensureEventChatGroup(
+  eventId: string,
+  event: FirebaseFirestore.DocumentData,
+  createdBy: string
+): Promise<{ groupId: string; exists: boolean }> {
+  const existing = await db.collection("chatGroups").where("eventId", "==", eventId).limit(1).get();
+  if (!existing.empty) {
+    const groupId = existing.docs[0].id;
+    if (event.chatGroupId !== groupId) {
+      await db.doc(`events/${eventId}`).update({
+        chatGroupId: groupId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    return { groupId, exists: true };
+  }
+
+  const archiveAt = event.endDatetime
+    ? Timestamp.fromMillis(event.endDatetime.toMillis() + 7 * 86400000)
+    : null;
+
+  const ref = await db.collection("chatGroups").add({
+    type: "event_group",
+    eventId,
+    name: event.title ?? "Event Chat",
+    createdBy,
+    memberIds: [event.createdBy].filter(Boolean),
+    isArchived: false,
+    isPublic: true,
+    archiveAt,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await db.doc(`events/${eventId}`).update({
+    chatGroupId: ref.id,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { groupId: ref.id, exists: false };
+}
+
+export async function addUserToEventChat(eventId: string, userId: string): Promise<void> {
+  const existing = await db.collection("chatGroups").where("eventId", "==", eventId).limit(1).get();
+  if (existing.empty) return;
+  await existing.docs[0].ref.update({
+    memberIds: FieldValue.arrayUnion(userId),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
 // ─── Group creation ───────────────────────────────────────────────────────────
 
 /** REQ-CHT-001: Create an event chat group. Called when chat_enabled event is approved. */
@@ -33,34 +83,12 @@ export const createEventChatGroup = onCall({ region: REGION }, async (request) =
   if (!eventSnap.exists) throw new HttpsError("not-found", "Event not found");
   const event = eventSnap.data()!;
 
-  // Only event creator or admin can create the group
   const adminCaller = await isAdmin(request.auth.uid);
   if (!adminCaller && event.createdBy !== request.auth.uid) {
     throw new HttpsError("permission-denied", "Only event creator or admin can create chat group");
   }
 
-  const existing = await db.collection("chatGroups").where("eventId", "==", eventId).limit(1).get();
-  if (!existing.empty) return { groupId: existing.docs[0].id, exists: true };
-
-  const archiveAt = event.endDatetime
-    ? Timestamp.fromMillis(event.endDatetime.toMillis() + 7 * 86400000)
-    : null;
-
-  const ref = await db.collection("chatGroups").add({
-    type: "event_group",
-    eventId,
-    name: event.title ?? "Event Chat",
-    createdBy: request.auth.uid,
-    memberIds: [event.createdBy],
-    isArchived: false,
-    isPublic: true,
-    archiveAt,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-
-  await db.doc(`events/${eventId}`).update({ chatGroupId: ref.id, updatedAt: FieldValue.serverTimestamp() });
-  return { groupId: ref.id, exists: false };
+  return ensureEventChatGroup(eventId, event, request.auth.uid);
 });
 
 /** REQ-CHT-003: Create or get a direct-message channel between two users. */

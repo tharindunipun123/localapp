@@ -18,6 +18,7 @@ import {
   FieldValue,
   Timestamp,
 } from "./helpers";
+import { applyKycOutcome, createDiditHostedSession, mapDiditSessionStatus } from "./kycProvider";
 
 const REGION = "us-central1";
 
@@ -439,9 +440,7 @@ export const validateUserQr = onCall({ region: REGION }, async (request) => {
   };
 });
 
-const DIDIT_API = "https://verification.didit.me/v3";
-
-/** Create a Didit KYC verification session and return the hosted URL */
+/** Create a Didit hosted KYC session (OCR + liveness + face match) */
 export const createKycSession = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in");
   const uid = request.auth.uid;
@@ -451,68 +450,7 @@ export const createKycSession = onCall({ region: REGION }, async (request) => {
     throw new HttpsError("failed-precondition", "KYC already approved");
   }
 
-  const settings = await getAppSettings();
-  const apiKey = settings.diditApiKey;
-  if (!apiKey) throw new HttpsError("internal", "KYC provider not configured");
-
-  // Ensure a workflow exists; create one if the admin hasn't set one yet
-  let workflowId = settings.diditWorkflowId;
-  if (!workflowId) {
-    const wfRes = await fetch(`${DIDIT_API}/workflows/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-      body: JSON.stringify({ features: ["OCR", "FACE_MATCH"] }),
-    });
-    if (!wfRes.ok) {
-      throw new HttpsError("internal", "Failed to create Didit workflow");
-    }
-    const wf = (await wfRes.json()) as { id?: string; workflow_id?: string };
-    workflowId = wf.id ?? wf.workflow_id ?? "";
-    if (workflowId) {
-      await db.doc("settings/app").set({ diditWorkflowId: workflowId }, { merge: true });
-    }
-  }
-
-  const sessionRes = await fetch(`${DIDIT_API}/session/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-    body: JSON.stringify({
-      workflow_id: workflowId,
-      vendor_data: uid,
-      callback: `${settings.siteUrl}/kyc/complete`,
-    }),
-  });
-
-  if (!sessionRes.ok) {
-    const errBody = await sessionRes.text();
-    throw new HttpsError("internal", `Didit session error: ${errBody}`);
-  }
-
-  const session = (await sessionRes.json()) as {
-    session_id: string;
-    url: string;
-    status: string;
-  };
-
-  await db.doc(`kycSubmissions/${uid}`).set(
-    {
-      userId: uid,
-      sessionId: session.session_id,
-      provider: "didit",
-      status: "pending",
-      diditStatus: session.status,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  await db.doc(`users/${uid}`).update({
-    kycStatus: "pending",
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-
-  return { url: session.url, sessionId: session.session_id };
+  return createDiditHostedSession(uid);
 });
 
 /** Didit webhook — receives real-time KYC status updates */
@@ -564,47 +502,16 @@ export const diditWebhook = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  // Map Didit status → our internal KYC status
-  const statusMap: Record<string, string> = {
-    Approved: "approved",
-    Declined: "rejected",
-    "In Review": "pending",
-    "Not Started": "pending",
-    "In Progress": "pending",
-    Resubmitted: "pending",
-    Abandoned: "rejected",
-    Expired: "rejected",
-  };
-  const kycStatus = statusMap[diditStatus] ?? "pending";
+  const kycStatus = mapDiditSessionStatus(diditStatus);
 
   try {
-    await db.doc(`kycSubmissions/${userId}`).set(
-      {
-        diditStatus,
-        status: kycStatus,
-        sessionId: payload.session_id ?? "",
-        decision: payload.decision ?? {},
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    await db.doc(`users/${userId}`).update({
-      kycStatus,
-      updatedAt: FieldValue.serverTimestamp(),
+    await applyKycOutcome(userId, kycStatus, {
+      diditStatus,
+      sessionId: payload.session_id ?? "",
+      decision: payload.decision ?? {},
+      provider: "didit",
+      mode: "hosted",
     });
-
-    // On automatic approval activate the wallet spending limits
-    if (kycStatus === "approved") {
-      await db.doc(`wallets/${userId}`).set(
-        {
-          spendingLimitDaily: settings.defaultSpendingLimitDaily,
-          spendingLimitMonthly: settings.defaultSpendingLimitMonthly,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    }
 
     res.json({ received: true });
   } catch (err) {

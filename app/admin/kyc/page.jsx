@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { getPendingKycSubmissions, reviewKyc } from "@/lib/services/kyc";
+import { getPendingKycSubmissions, reviewKyc, getKycImageUrl } from "@/lib/services/kyc";
 import { parseFirestoreTime } from "@/lib/firestoreTime";
 import { format } from "date-fns";
 import { ExternalLink, ShieldCheck, XCircle } from "lucide-react";
@@ -16,6 +16,29 @@ function statusBadge(diditStatus, kycStatus) {
   if (kycStatus === "rejected") return <Badge label="Rejected" status="rejected" />;
   const label = diditStatus ?? "Pending";
   return <Badge label={label} status="pending" />;
+}
+
+function KycImage({ path, label }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!path) return;
+    getKycImageUrl(path).then((next) => setUrl(next || ""));
+  }, [path]);
+  if (!path) return null;
+  return (
+    <div>
+      <p className="mb-1 text-[10px] uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+      {url ? (
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          <img src={url} alt={label} className="h-28 w-full rounded-lg object-cover" />
+        </a>
+      ) : (
+        <div className="flex h-28 items-center justify-center rounded-lg bg-[var(--color-secondary)] text-xs text-[var(--color-muted)]">
+          Loading…
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AdminKycPage() {
@@ -69,12 +92,13 @@ export default function AdminKycPage() {
         <ul className="space-y-4">
           {submissions.map((s) => {
             const submittedAt = parseFirestoreTime(s.createdAt);
+            const extracted = s.extracted ?? {};
             return (
               <Card key={s.id}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <CardHeader
-                      title={s.fullName ?? `User ${s.userId}`}
+                      title={extracted.fullName || s.fullName || `User ${s.userId}`}
                       subtitle={`User ID: ${s.userId}`}
                     />
                     <p className="text-xs text-[var(--color-muted)]">
@@ -86,16 +110,72 @@ export default function AdminKycPage() {
                   </div>
                 </div>
 
-                {/* Provider info */}
+                {(s.frontPath || s.selfiePath) && (
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <KycImage path={s.frontPath} label="ID front" />
+                    <KycImage path={s.backPath} label="ID back" />
+                    <KycImage path={s.selfiePath} label="Selfie" />
+                  </div>
+                )}
+
                 <div className="mt-3 rounded-lg bg-[var(--color-secondary)] p-3 text-sm space-y-1">
                   <p>
                     <span className="text-[var(--color-muted)]">Provider: </span>
                     <span className="font-medium capitalize">{s.provider ?? "—"}</span>
+                    {s.mode ? <span className="text-[var(--color-muted)]"> · {s.mode === "in_app" ? "in-app photos" : "hosted camera"}</span> : null}
                   </p>
                   <p>
                     <span className="text-[var(--color-muted)]">Didit status: </span>
                     <span className="font-medium">{s.diditStatus ?? "—"}</span>
                   </p>
+                  {(s.identity?.nicNumber || extracted.documentNumber) && (
+                    <p>
+                      <span className="text-[var(--color-muted)]">Document: </span>
+                      <span className="font-medium">{extracted.documentType || "NIC"} {s.identity?.nicNumber || extracted.documentNumber}</span>
+                    </p>
+                  )}
+                  {(s.identity?.dateOfBirth || extracted.dateOfBirth) && (
+                    <p>
+                      <span className="text-[var(--color-muted)]">DOB: </span>
+                      <span className="font-medium">{s.identity?.dateOfBirth || extracted.dateOfBirth}</span>
+                    </p>
+                  )}
+                  {s.identity?.phone && (
+                    <p>
+                      <span className="text-[var(--color-muted)]">Phone: </span>
+                      <span className="font-medium">{s.identity.phone}</span>
+                    </p>
+                  )}
+                  {s.identity?.bankName && (
+                    <p>
+                      <span className="text-[var(--color-muted)]">Bank: </span>
+                      <span className="font-medium">{s.identity.bankName} {s.identity.bankAccount || ""}</span>
+                    </p>
+                  )}
+                  {s.idVerification?.status && (
+                    <p>
+                      <span className="text-[var(--color-muted)]">ID check: </span>
+                      <span className="font-medium">{s.idVerification.status}</span>
+                    </p>
+                  )}
+                  {s.faceMatch?.status && (
+                    <p>
+                      <span className="text-[var(--color-muted)]">Face match: </span>
+                      <span className="font-medium">
+                        {s.faceMatch.status}
+                        {typeof s.faceMatch.score === "number" ? ` · ${Math.round(s.faceMatch.score * 100)}%` : ""}
+                      </span>
+                    </p>
+                  )}
+                  {s.liveness?.status && (
+                    <p>
+                      <span className="text-[var(--color-muted)]">Liveness: </span>
+                      <span className="font-medium">
+                        {s.liveness.status}
+                        {typeof s.liveness.score === "number" ? ` · ${Math.round(s.liveness.score * 100)}%` : ""}
+                      </span>
+                    </p>
+                  )}
                   {s.sessionId && (
                     <p>
                       <span className="text-[var(--color-muted)]">Session ID: </span>
@@ -104,11 +184,10 @@ export default function AdminKycPage() {
                   )}
                 </div>
 
-                {/* Decision details if available */}
                 {s.decision && Object.keys(s.decision).length > 0 && (
                   <details className="mt-2">
                     <summary className="cursor-pointer text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]">
-                      View AI decision details
+                      View decision details
                     </summary>
                     <pre className="mt-1 max-h-40 overflow-auto rounded bg-[var(--color-border-light)] p-2 text-xs">
                       {JSON.stringify(s.decision, null, 2)}
@@ -116,7 +195,6 @@ export default function AdminKycPage() {
                   </details>
                 )}
 
-                {/* Only show manual override buttons for sessions in review or pending */}
                 {s.status === "pending" && (
                   <div className="mt-4 flex items-center gap-2">
                     <Button

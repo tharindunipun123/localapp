@@ -72,7 +72,7 @@ export default function AdminMatrimonialPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-2">
-        <Heart className="h-6 w-6 text-rose-500" />
+        <Heart className="h-6 w-6 text-[var(--segment-matrimonial)]" />
         <h1 className="text-2xl font-bold">Matrimonial — Admin</h1>
       </div>
 
@@ -83,7 +83,7 @@ export default function AdminMatrimonialPage() {
       <Card>
         <CardHeader
           title={`Photo moderation queue (${queue.length} pending)`}
-          subtitle="REQ-MAT-003 — Photos must be approved before appearing publicly"
+          subtitle="Photos must be approved before they appear publicly"
         />
         {loading ? (
           <p className="text-sm text-[var(--color-muted)]">Loading…</p>

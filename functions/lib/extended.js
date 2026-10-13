@@ -161,41 +161,71 @@ exports.redeemLoyaltyPoints = (0, https_1.onCall)({ region: REGION }, async (req
     await (0, helpers_1.createNotification)(userId, "Points Redeemed", `You redeemed ${pointsRequired} loyalty points.`, "loyalty_redeem");
     return { success: true, pointsRedeemed: pointsRequired };
 });
-/** REQ-VND-010: Event check-in via user QR */
+/** REQ-VND-010: Event check-in via ticket QR or rotating user QR */
 exports.checkInEvent = (0, https_1.onCall)({ region: REGION }, async (request) => {
     var _a;
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "Must be signed in");
+    const { eventId: requestedEventId, qrValue } = request.data;
+    if (!qrValue)
+        throw new https_1.HttpsError("invalid-argument", "QR value required");
+    let ticketDoc = null;
+    let userId = "";
+    let eventId = requestedEventId !== null && requestedEventId !== void 0 ? requestedEventId : "";
+    if (qrValue.startsWith("TICKET")) {
+        const byQr = await helpers_1.db.collection("tickets").where("qrCodeValue", "==", qrValue).limit(1).get();
+        if (byQr.empty)
+            throw new https_1.HttpsError("not-found", "Ticket QR not recognised");
+        ticketDoc = byQr.docs[0];
+        const ticket = ticketDoc.data();
+        if (eventId && ticket.eventId !== eventId) {
+            throw new https_1.HttpsError("failed-precondition", "This ticket is for a different event");
+        }
+        eventId = ticket.eventId;
+        userId = ticket.userId;
+    }
+    else {
+        const parsed = await (0, helpers_1.parseAndValidateQrStrict)(qrValue);
+        if (!parsed)
+            throw new https_1.HttpsError("invalid-argument", "Invalid QR code");
+        if (!eventId)
+            throw new https_1.HttpsError("invalid-argument", "Event ID required for user QR check-in");
+        userId = parsed.userId;
+        const ticketSnap = await helpers_1.db
+            .collection("tickets")
+            .where("eventId", "==", eventId)
+            .where("userId", "==", userId)
+            .where("status", "==", "active")
+            .limit(1)
+            .get();
+        if (ticketSnap.empty)
+            throw new https_1.HttpsError("not-found", "No active ticket for this user");
+        ticketDoc = ticketSnap.docs[0];
+    }
     if (!(await (0, helpers_1.isAdmin)(request.auth.uid)) && !(await (0, helpers_1.isApprovedVendor)(request.auth.uid))) {
-        const eventId = request.data.eventId;
         const eventSnap = await helpers_1.db.doc(`events/${eventId}`).get();
         if (!eventSnap.exists || ((_a = eventSnap.data()) === null || _a === void 0 ? void 0 : _a.createdBy) !== request.auth.uid) {
             throw new https_1.HttpsError("permission-denied", "Not authorized to check in");
         }
     }
-    const { eventId, qrValue } = request.data;
-    const parsed = await (0, helpers_1.parseAndValidateQrStrict)(qrValue);
-    if (!parsed)
-        throw new https_1.HttpsError("invalid-argument", "Invalid QR code");
-    const ticketSnap = await helpers_1.db
-        .collection("tickets")
-        .where("eventId", "==", eventId)
-        .where("userId", "==", parsed.userId)
-        .where("status", "==", "active")
-        .limit(1)
-        .get();
-    if (ticketSnap.empty)
+    if (!ticketDoc)
         throw new https_1.HttpsError("not-found", "No active ticket for this user");
-    const ticketRef = ticketSnap.docs[0].ref;
-    await ticketRef.update({ checkedIn: true, checkedInAt: helpers_1.FieldValue.serverTimestamp() });
+    const ticket = ticketDoc.data();
+    if (ticket.status && ticket.status !== "active") {
+        throw new https_1.HttpsError("failed-precondition", "Ticket is not active");
+    }
+    if (ticket.checkedIn) {
+        throw new https_1.HttpsError("already-exists", "Already checked in");
+    }
+    await ticketDoc.ref.update({ checkedIn: true, checkedInAt: helpers_1.FieldValue.serverTimestamp() });
     await helpers_1.db.collection("eventCheckIns").add({
         eventId,
-        userId: parsed.userId,
-        ticketId: ticketSnap.docs[0].id,
+        userId,
+        ticketId: ticketDoc.id,
         checkedInBy: request.auth.uid,
         createdAt: helpers_1.FieldValue.serverTimestamp(),
     });
-    return { success: true, userId: parsed.userId };
+    return { success: true, userId, eventId, ticketId: ticketDoc.id };
 });
 /** REQ-PRO-002: Promo redemption at vendor POS via user QR */
 exports.redeemPromoAtPos = (0, https_1.onCall)({ region: REGION }, async (request) => {

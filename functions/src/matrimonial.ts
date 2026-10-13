@@ -147,6 +147,19 @@ export const createOrUpdateMatrimonialProfile = onCall({ region: REGION }, async
   return { success: true, created: !existing };
 });
 
+/** REQ-MAT-010: hide or reactivate the matrimonial profile. */
+export const setMatrimonialProfileActive = onCall({ region: REGION }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in");
+  const uid = request.auth.uid;
+  const { isActive } = request.data as { isActive?: boolean };
+  if (typeof isActive !== "boolean") throw new HttpsError("invalid-argument", "isActive required");
+  const ref = db.doc(`matrimonialProfiles/${uid}`);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Profile not found");
+  await ref.update({ isActive, updatedAt: FieldValue.serverTimestamp() });
+  return { success: true, isActive };
+});
+
 /** REQ-MAT-002: Submit photo to admin moderation queue. */
 export const submitMatrimonialPhoto = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in");

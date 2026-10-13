@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMyMatrimonialInterests = exports.getMyMatrimonialEventRegistrations = exports.registerMatrimonialEvent = exports.getMyMatrimonialProfile = exports.adminCreditCoins = exports.respondToMatrimonialInterest = exports.sendMatrimonialInterest = exports.unlockMatrimonialProfile = exports.searchMatrimonialProfiles = exports.moderateMatrimonialPhoto = exports.submitMatrimonialPhoto = exports.createOrUpdateMatrimonialProfile = void 0;
+exports.getMyMatrimonialInterests = exports.getMyMatrimonialEventRegistrations = exports.registerMatrimonialEvent = exports.getMyMatrimonialProfile = exports.adminCreditCoins = exports.respondToMatrimonialInterest = exports.sendMatrimonialInterest = exports.unlockMatrimonialProfile = exports.searchMatrimonialProfiles = exports.moderateMatrimonialPhoto = exports.submitMatrimonialPhoto = exports.setMatrimonialProfileActive = exports.createOrUpdateMatrimonialProfile = void 0;
 /**
  * Matrimonial Module — REQ-MAT-001 through REQ-MAT-012
  *
@@ -95,6 +95,21 @@ exports.createOrUpdateMatrimonialProfile = (0, https_1.onCall)({ region: REGION 
         ...(existing ? {} : { createdAt: helpers_1.FieldValue.serverTimestamp(), photos: [] }),
     }, { merge: true });
     return { success: true, created: !existing };
+});
+/** REQ-MAT-010: hide or reactivate the matrimonial profile. */
+exports.setMatrimonialProfileActive = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError("unauthenticated", "Must be signed in");
+    const uid = request.auth.uid;
+    const { isActive } = request.data;
+    if (typeof isActive !== "boolean")
+        throw new https_1.HttpsError("invalid-argument", "isActive required");
+    const ref = helpers_1.db.doc(`matrimonialProfiles/${uid}`);
+    const snap = await ref.get();
+    if (!snap.exists)
+        throw new https_1.HttpsError("not-found", "Profile not found");
+    await ref.update({ isActive, updatedAt: helpers_1.FieldValue.serverTimestamp() });
+    return { success: true, isActive };
 });
 /** REQ-MAT-002: Submit photo to admin moderation queue. */
 exports.submitMatrimonialPhoto = (0, https_1.onCall)({ region: REGION }, async (request) => {

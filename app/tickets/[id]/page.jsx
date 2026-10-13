@@ -66,7 +66,7 @@ function TicketDetail() {
             <p>Purchased: {format(ticket.createdAt.toDate(), "MMM d, yyyy HH:mm")}</p>
           </div>
           <p className="mt-4 text-xs text-[var(--color-muted-fg)]">
-            Show this QR code at the event entrance
+            Present this ticket QR at the entrance. Cashiers can also scan your personal wallet QR.
           </p>
         </Card>
       </div>

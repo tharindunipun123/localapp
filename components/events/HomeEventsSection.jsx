@@ -11,6 +11,7 @@ import {
 } from "@/lib/services/events";
 import { getAttractions } from "@/lib/services/places";
 import { DEFAULT_CENTER } from "@/lib/utils/geohash";
+import { SectionHeading } from "@/components/layout/SectionHeading";
 
 export function HomeEventsSection() {
   const [featured, setFeatured] = useState([]);
@@ -55,7 +56,7 @@ export function HomeEventsSection() {
 
   return (
     <>
-      <Section title="Featured Events" subtitle="Hand-picked events across Sri Lanka">
+      <Section eyebrow="Calendar" title="Featured events" subtitle="Hand-picked listings across Sri Lanka">
         {loading ? (
           <GridSkeleton />
         ) : featured.length ? (
@@ -69,7 +70,7 @@ export function HomeEventsSection() {
         )}
       </Section>
 
-      <Section title="Today's Events" subtitle="Happening today near you">
+      <Section eyebrow="Today" title="Happening now" subtitle="Events scheduled for today">
         {loading ? (
           <GridSkeleton />
         ) : today.length ? (
@@ -83,7 +84,7 @@ export function HomeEventsSection() {
         )}
       </Section>
 
-      <Section title="Nearby Events" subtitle="Within 10 km of your location">
+      <Section eyebrow="Near you" title="Nearby events" subtitle="Within 10 km of your location">
         {loading ? (
           <GridSkeleton />
         ) : nearby.length ? (
@@ -97,7 +98,7 @@ export function HomeEventsSection() {
         )}
       </Section>
 
-      <Section title="Top Attractions" subtitle="Explore Sri Lanka's best places">
+      <Section eyebrow="Places" title="Top attractions" subtitle="Landmarks worth a visit">
         {loading ? (
           <GridSkeleton />
         ) : (
@@ -112,15 +113,10 @@ export function HomeEventsSection() {
   );
 }
 
-function Section({ title, subtitle, children }) {
+function Section({ eyebrow, title, subtitle, children }) {
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-[var(--color-fg)]">{title}</h2>
-        {subtitle && (
-          <p className="mt-1 text-sm text-[var(--color-muted)]">{subtitle}</p>
-        )}
-      </div>
+      <SectionHeading eyebrow={eyebrow} title={title} subtitle={subtitle} />
       {children}
     </section>
   );

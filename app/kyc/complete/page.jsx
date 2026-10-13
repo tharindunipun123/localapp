@@ -1,14 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { useAuth } from "@/providers/AuthProvider";
-import { getKycSubmission } from "@/lib/services/kyc";
+import { getKycSubmission, refreshKycDecision } from "@/lib/services/kyc";
 import { ShieldCheck, Clock, AlertCircle, Loader2 } from "lucide-react";
 
 export default function KycCompletePage() {
+  return (
+    <Suspense
+      fallback={
+        <PublicLayout>
+          <div className="px-4 py-16 text-center text-sm text-[var(--color-muted)]">
+            Processing your verification…
+          </div>
+        </PublicLayout>
+      }
+    >
+      <KycCompleteContent />
+    </Suspense>
+  );
+}
+
+function KycCompleteContent() {
   const { profile, refreshProfile } = useAuth();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("loading");
@@ -17,9 +33,9 @@ export default function KycCompletePage() {
     if (!profile?.uid) return;
 
     async function checkStatus() {
-      // Didit may still be processing; poll Firestore for up to 15 s
       let attempts = 0;
       while (attempts < 5) {
+        await refreshKycDecision().catch(() => null);
         await refreshProfile();
         const sub = await getKycSubmission(profile.uid).catch(() => null);
         if (sub?.status === "approved") { setStatus("approved"); return; }
@@ -50,8 +66,8 @@ export default function KycCompletePage() {
 
         {status === "approved" && (
           <>
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-              <ShieldCheck className="h-8 w-8 text-green-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-success-light)]">
+              <ShieldCheck className="h-8 w-8 text-[var(--color-success)]" />
             </div>
             <h1 className="text-2xl font-bold text-[var(--color-fg)]">Identity Verified!</h1>
             <p className="mt-2 text-[var(--color-muted)]">
@@ -65,8 +81,8 @@ export default function KycCompletePage() {
 
         {status === "in_review" && (
           <>
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100">
-              <Clock className="h-8 w-8 text-yellow-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-warning-light)]">
+              <Clock className="h-8 w-8 text-[var(--color-warning-fg)]" />
             </div>
             <h1 className="text-2xl font-bold text-[var(--color-fg)]">Under Manual Review</h1>
             <p className="mt-2 text-[var(--color-muted)]">

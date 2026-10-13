@@ -12,6 +12,7 @@ import { DiscoverSearchBar } from "@/components/search/DiscoverSearchBar";
 import { getApprovedEvents, getNearbyEvents, searchEventsByTitle } from "@/lib/services/events";
 import { filterByQuery } from "@/lib/services/unifiedSearch";
 import { Plus } from "lucide-react";
+import { PageHero } from "@/components/layout/PageHero";
 
 const categories = [
   { value: "", label: "All categories" },
@@ -96,14 +97,16 @@ export default function EventsPageContent() {
 
   return (
     <PublicLayout>
+      <PageHero
+        compact
+        segment="events"
+        image="/images/hero-events.png"
+        eyebrow="Calendar"
+        title="Events across Sri Lanka"
+        subtitle="Paid and free listings with wallet settlement, promo codes, and QR check-in."
+      />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--color-fg)]">Events</h1>
-            <p className="mt-1 text-[var(--color-muted)]">
-              Discover happenings across Sri Lanka
-            </p>
-          </div>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
           <div className="flex items-center gap-3">
             <Select
               options={categories}

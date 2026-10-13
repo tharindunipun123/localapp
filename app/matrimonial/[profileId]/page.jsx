@@ -86,7 +86,7 @@ function ProfileViewContent() {
   if (coinsError) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <Lock className="mx-auto mb-4 h-12 w-12 text-yellow-500" />
+        <Lock className="mx-auto mb-4 h-12 w-12 text-[var(--color-money)]" />
         <h1 className="text-xl font-bold">Coins required</h1>
         <p className="mt-2 text-sm text-[var(--color-muted)]">
           You need <strong>{coinsError.required} coins</strong> to view this profile.<br />
@@ -114,7 +114,7 @@ function ProfileViewContent() {
       </button>
 
       {coinsCharged > 0 && (
-        <div className="flex items-center gap-2 rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-700">
+        <div className="flex items-center gap-2 rounded-lg bg-[var(--color-warning-light)] px-3 py-2 text-sm text-[var(--color-warning-fg)]">
           <Coins className="h-4 w-4" />
           {coinsCharged} coins deducted for this view (REQ-MAT-007). Free for 7 days.
         </div>

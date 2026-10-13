@@ -6,12 +6,14 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   addDoc,
   serverTimestamp,
   orderBy,
   query,
   limit,
+  startAfter,
   updateDoc,
   arrayUnion,
 } from "firebase/firestore";
@@ -47,6 +49,9 @@ function ChatRoomContent() {
   const [notMember, setNotMember] = useState(false);
   const [reporting, setReporting] = useState(null);
   const [reportReason, setReportReason] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const oldestDocRef = useRef(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const unsubRef = useRef(null);
@@ -69,11 +74,14 @@ function ChatRoomContent() {
     if (!groupId) return;
     const q = query(
       collection(db, "chatGroups", groupId, "messages"),
-      orderBy("createdAt", "asc"),
+      orderBy("createdAt", "desc"),
       limit(PAGE_LIMIT)
     );
     const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const rows = snap.docs.slice().reverse().map((d) => ({ id: d.id, ...d.data() }));
+      setMessages(rows);
+      oldestDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+      setHasMore(snap.docs.length === PAGE_LIMIT);
     });
     unsubRef.current = unsub;
     return () => unsub();
@@ -187,6 +195,39 @@ function ChatRoomContent() {
 
       {/* Messages (REQ-CHT-004, REQ-CHT-005) */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+        {hasMore && (
+          <div className="flex justify-center pb-2">
+            <button
+              type="button"
+              disabled={loadingOlder}
+              onClick={async () => {
+                if (!oldestDocRef.current) return;
+                setLoadingOlder(true);
+                try {
+                  const olderQ = query(
+                    collection(db, "chatGroups", groupId, "messages"),
+                    orderBy("createdAt", "desc"),
+                    startAfter(oldestDocRef.current),
+                    limit(PAGE_LIMIT)
+                  );
+                  const snap = await getDocs(olderQ);
+                  const older = snap.docs.slice().reverse().map((d) => ({ id: d.id, ...d.data() }));
+                  setMessages((prev) => {
+                    const seen = new Set(prev.map((m) => m.id));
+                    return [...older.filter((m) => !seen.has(m.id)), ...prev];
+                  });
+                  if (snap.docs.length) oldestDocRef.current = snap.docs[snap.docs.length - 1];
+                  setHasMore(snap.docs.length === PAGE_LIMIT);
+                } finally {
+                  setLoadingOlder(false);
+                }
+              }}
+              className="text-xs text-[var(--color-primary)] hover:underline"
+            >
+              {loadingOlder ? "Loading…" : "Load older messages"}
+            </button>
+          </div>
+        )}
         {messages.map((msg) => {
           const isMe = msg.senderId === profile?.uid;
           const isSystem = msg.type === "system";
@@ -230,7 +271,7 @@ function ChatRoomContent() {
                   </button>
                 )}
                 {msg.reported && !isMe && (
-                  <span className="absolute -right-5 top-2 text-xs text-yellow-500">!</span>
+                  <span className="absolute -right-5 top-2 text-xs text-[var(--color-warning)]">!</span>
                 )}
                 {/* Report form */}
                 {reporting === msg.id && (

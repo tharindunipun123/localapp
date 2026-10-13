@@ -46,8 +46,19 @@ export function AuthProvider({ children }) {
       if (user) {
         try {
           const p = await ensureUserDocument(user);
+          const logoutAt = p?.forceLogoutAt?.toMillis?.() ?? p?.forceLogoutAt ?? 0;
+          const sessionStart = Number(sessionStorage.getItem("la_session") || Date.now());
+          if (p?.disabled || (logoutAt && logoutAt > sessionStart)) {
+            await signOut(auth);
+            sessionStorage.removeItem("la_session");
+            setFirebaseUser(null);
+            setProfile(null);
+            setLoading(false);
+            return;
+          }
           setProfile(p);
         } catch {
+          await signOut(auth).catch(() => {});
           setProfile(null);
         }
       } else {

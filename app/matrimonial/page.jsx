@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { PageHero } from "@/components/layout/PageHero";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
@@ -93,22 +94,28 @@ function BrowseContent() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Heart className="h-6 w-6 text-rose-500" />
-          <h1 className="text-2xl font-bold">Find Your Match</h1>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/matrimonial/profile">
-            <Button variant="outline" size="sm">My Profile</Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Search filters */}
+    <>
+      <PageHero
+        compact
+        segment="matrimonial"
+        image="/images/hero-matrimonial.png"
+        eyebrow="Private members"
+        title="Find a match"
+        subtitle="First 20 results are free. Further pages and profile unlocks use in-app coins."
+        actions={
+          <>
+            <Link href="/matrimonial/profile">
+              <Button className="bg-white text-[var(--color-ink)] hover:bg-white/90" size="sm">My profile</Button>
+            </Link>
+            <Link href="/matrimonial/events">
+              <Button variant="outline" size="sm" className="border-white/40 text-white hover:bg-white/10">Events</Button>
+            </Link>
+          </>
+        }
+      />
+      <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
       <Card>
-        <CardHeader title="Search filters" subtitle="REQ-MAT-005 — First 20 results free (REQ-MAT-006)" />
+        <CardHeader title="Search filters" subtitle="The first page is free. Later pages use coins." />
         <form onSubmit={handleSearch} className="grid gap-3 sm:grid-cols-3">
           <Select
             label="Looking for"
@@ -151,18 +158,20 @@ function BrowseContent() {
         </form>
       </Card>
 
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="rounded-lg bg-[var(--color-danger-light)] p-3 text-sm text-[var(--color-danger-fg)]">{error}</p>}
 
       {coinsError && (
-        <Card className="border-yellow-300 bg-yellow-50">
+        <Card className="border-[var(--color-warning)]/30 bg-[var(--color-warning-light)]">
           <div className="flex items-start gap-3">
-            <Coins className="h-5 w-5 shrink-0 text-yellow-600" />
+            <Coins className="h-5 w-5 shrink-0 text-[var(--color-money-fg)]" />
             <div>
-              <p className="font-medium text-yellow-800">Coins required for page {page}</p>
-              <p className="text-sm text-yellow-700">
+              <p className="font-medium text-[var(--color-money-fg)]">Coins required for page {page}</p>
+              <p className="text-sm text-[var(--color-warning-fg)]">
                 You need <strong>{coinsError.required} coins</strong> to view more results, but you only have <strong>{coinsError.held} coins</strong>.
               </p>
-              <p className="mt-1 text-xs text-yellow-600">Top up your coins to continue browsing. Contact support or visit the wallet page.</p>
+              <p className="mt-1 text-xs text-[var(--color-warning-fg)]">
+                <Link href="/wallet" className="font-medium underline">Open wallet</Link> to top up coins.
+              </p>
             </div>
           </div>
         </Card>
@@ -173,7 +182,7 @@ function BrowseContent() {
           <div className="flex items-center justify-between">
             <p className="text-sm text-[var(--color-muted)]">
               {total} profile{total !== 1 ? "s" : ""} found
-              {page > 1 && <span className="ml-1 text-yellow-600">· Page {page} (coins deducted)</span>}
+              {page > 1 && <span className="ml-1 text-[var(--color-money-fg)]">· Page {page} (coins deducted)</span>}
             </p>
             {page === 1 && (
               <Badge label="First page free" status="approved" />
@@ -206,7 +215,8 @@ function BrowseContent() {
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -220,7 +230,7 @@ function ProfileCard({ profile }) {
             <img src={profile.primaryPhoto} alt={profile.displayName} className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full items-center justify-center text-[var(--color-muted)]">
-              <Heart className="h-10 w-10 opacity-30" />
+              <Heart className="h-10 w-10 text-[var(--segment-matrimonial)] opacity-40" />
             </div>
           )}
         </div>

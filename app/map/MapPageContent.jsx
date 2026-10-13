@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { PageHero } from "@/components/layout/PageHero";
 import { MapView } from "@/components/maps/MapView";
 import { Card } from "@/components/ui/Card";
 import { resolveImageUrl } from "@/lib/services/storage";
@@ -15,6 +16,7 @@ import { LocationSearchInput } from "@/components/search/LocationSearchInput";
 import { getNearbyEvents } from "@/lib/services/events";
 import { getNearbyPlaces } from "@/lib/services/places";
 import { DEFAULT_CENTER, geoPointToLatLng } from "@/lib/utils/geohash";
+import { getAppSettings } from "@/lib/services/admin";
 import { Calendar, MapPin, Star, X } from "lucide-react";
 
 function getEventStart(event) {
@@ -41,11 +43,21 @@ export default function MapPageContent() {
   const [places, setPlaces] = useState([]);
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState(null);
+  const [radiusKm, setRadiusKm] = useState(10);
   const [searchLocation, setSearchLocation] = useState(
     paramQ && paramLat && paramLng
       ? { name: paramQ, address: paramQ, lat: Number(paramLat), lng: Number(paramLng) }
       : null
   );
+
+  useEffect(() => {
+    getAppSettings()
+      .then((s) => {
+        const r = Number(s?.nearbyRadiusKm);
+        if (r >= 1 && r <= 50) setRadiusKm(r);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (paramLat && paramLng) return;
@@ -65,14 +77,14 @@ export default function MapPageContent() {
       const placeType =
         filter === "landmark" ? "landmark" : filter === "attraction" ? "attraction" : undefined;
       const [e, p] = await Promise.all([
-        filter !== "places" ? getNearbyEvents(lat, lng, 15, 30) : Promise.resolve([]),
-        filter !== "events" ? getNearbyPlaces(lat, lng, placeType, 15, 30) : Promise.resolve([]),
+        filter !== "places" ? getNearbyEvents(lat, lng, radiusKm, 30) : Promise.resolve([]),
+        filter !== "events" ? getNearbyPlaces(lat, lng, placeType, radiusKm, 30) : Promise.resolve([]),
       ]);
       setEvents(e);
       setPlaces(p);
     }
     load();
-  }, [lat, lng, filter]);
+  }, [lat, lng, filter, radiusKm]);
 
   function handleLocationSelect(place) {
     setLat(place.lat);
@@ -137,15 +149,17 @@ export default function MapPageContent() {
 
   return (
     <PublicLayout>
+      <PageHero
+        compact
+        segment="places"
+        image="/images/hero-places.png"
+        eyebrow="Explore"
+        title="Live map of Sri Lanka"
+        subtitle="Search cities, events, and attractions. The map follows your selection."
+      />
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <div className="mb-4 flex flex-col gap-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--color-fg)]">Map</h1>
-              <p className="text-sm text-[var(--color-muted)]">
-                Search Sri Lanka locations — map moves to your selection
-              </p>
-            </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <Select
               options={[
                 { value: "all", label: "All" },

@@ -26,11 +26,11 @@ function loadGoogleMaps() {
 }
 
 const MARKER_COLORS = {
-  event: "#0284c7",
-  place: "#059669",
-  landmark: "#7c3aed",
-  attraction: "#d97706",
-  search: "#e11d48",
+  event: "#1B7FDB",
+  place: "#2B93E0",
+  landmark: "#0A4E8A",
+  attraction: "#3BA4F0",
+  search: "#0A3A6B",
 };
 
 function buildInfoWindowContent(marker) {
@@ -55,11 +55,11 @@ function buildInfoWindowContent(marker) {
     : "";
 
   const distance = marker.distanceKm
-    ? `<p style="margin:0 0 8px;font-size:12px;color:#0284c7;">${marker.distanceKm.toFixed(1)} km away</p>`
+    ? `<p style="margin:0 0 8px;font-size:12px;color:#1B7FDB;">${marker.distanceKm.toFixed(1)} km away</p>`
     : "";
 
   const link = marker.href
-    ? `<a href="${marker.href}" style="display:inline-block;margin-top:4px;font-size:13px;font-weight:600;color:#0284c7;text-decoration:none;">View details →</a>`
+    ? `<a href="${marker.href}" style="display:inline-block;margin-top:4px;font-size:13px;font-weight:600;color:#1B7FDB;text-decoration:none;">View details →</a>`
     : "";
 
   return `

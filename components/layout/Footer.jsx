@@ -1,43 +1,67 @@
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { BrandMark } from "@/components/brand/BrandMark";
 
-const footerLinks = [
-  { href: "/events", label: "Events" },
-  { href: "/places", label: "Places" },
-  { href: "/map", label: "Map" },
-  { href: "/events/create", label: "Create Event" },
+const columns = [
+  {
+    title: "Product",
+    links: [
+      { href: "/wallet", label: "Wallet" },
+      { href: "/kyc", label: "Identity" },
+      { href: "/events", label: "Events" },
+      { href: "/lottery", label: "Lottery" },
+    ],
+  },
+  {
+    title: "Discover",
+    links: [
+      { href: "/places", label: "Places" },
+      { href: "/map", label: "Map" },
+      { href: "/matrimonial", label: "Matrimonial" },
+      { href: "/events/create", label: "Host an event" },
+    ],
+  },
+  {
+    title: "Account",
+    links: [
+      { href: "/profile", label: "Profile" },
+      { href: "/profile/family", label: "Family" },
+      { href: "/tickets", label: "Tickets" },
+      { href: "/vendor/dashboard", label: "Vendor portal" },
+    ],
+  },
 ];
 
 export function Footer() {
   return (
-    <footer className="mt-auto border-t border-[var(--color-border-light)] bg-[var(--color-card)]">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+    <footer className="mt-auto border-t border-[var(--color-border-light)] bg-[var(--color-ink)] text-white">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+        <div className="grid gap-10 md:grid-cols-4">
           <div>
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-lg font-bold text-[var(--color-primary)]"
-            >
-              <MapPin className="h-5 w-5" />
-              Local App Sri Lanka
-            </Link>
-            <p className="mt-2 max-w-sm text-sm text-[var(--color-muted)]">
-              Discover local events, landmarks, and attractions across Sri Lanka.
+            <BrandMark invert href="/" />
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/65">
+              One ledger for wallets, identity, vendors, and local events across Sri Lanka.
             </p>
           </div>
-          <nav className="flex flex-wrap gap-x-6 gap-y-2">
-            {footerLinks.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className="text-sm text-[var(--color-muted)] transition-colors hover:text-[var(--color-primary)]"
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
+          {columns.map((col) => (
+            <div key={col.title}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                {col.title}
+              </p>
+              <nav className="mt-3 flex flex-col gap-2">
+                {col.links.map(({ href, label }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="text-sm text-white/75 transition-colors hover:text-white"
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          ))}
         </div>
-        <p className="mt-8 border-t border-[var(--color-border-light)] pt-6 text-center text-sm text-[var(--color-muted-fg)]">
+        <p className="mt-10 border-t border-white/10 pt-6 text-center text-xs text-white/45">
           &copy; {new Date().getFullYear()} Local App Sri Lanka. All rights reserved.
         </p>
       </div>

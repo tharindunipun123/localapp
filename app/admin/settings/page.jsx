@@ -68,7 +68,7 @@ export default function AdminSettingsPage() {
       </Card>
 
       <Card>
-        <CardHeader title="KYC — Didit Identity Verification" subtitle="business.didit.me — API keys & webhook secret" />
+        <CardHeader title="KYC — Didit Identity Verification" subtitle="Free hosted KYC (ID OCR + liveness + face match). 500 sessions / month on Didit’s free plan." />
         <div className="space-y-4">
           <Input
             label="Didit API key (x-api-key)"

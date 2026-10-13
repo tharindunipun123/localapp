@@ -23,6 +23,7 @@ import {
 import { useState, useCallback } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { cn } from "@/lib/utils/cn";
 import { claimAdminRole } from "@/lib/services/cloudFunctions";
 import { useAuth } from "@/providers/AuthProvider";
@@ -37,6 +38,7 @@ const links = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/vendors", label: "Vendors", icon: Store },
   { href: "/admin/kyc", label: "KYC Queue", icon: BadgeCheck },
+  { href: "/admin/chat-reports", label: "Chat reports", icon: FileText },
   { href: "/admin/promos", label: "Promo Codes", icon: Gift },
   { href: "/admin/withdrawals", label: "Withdrawals", icon: Wallet },
   { href: "/admin/transactions", label: "Transactions", icon: Wallet },
@@ -44,6 +46,7 @@ const links = [
   { href: "/admin/lottery", label: "Lottery", icon: Ticket },
   { href: "/admin/matrimonial", label: "Matrimonial", icon: Heart },
   { href: "/admin/audit", label: "Audit Logs", icon: FileText },
+  { href: "/admin/broadcast", label: "Broadcast", icon: FileText },
 ];
 
 export default function AdminLayout({ children }) {
@@ -91,9 +94,10 @@ function AdminShell({ children }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex h-14 items-center border-b border-[var(--color-border-light)] px-4">
-          <Link href="/admin" className="font-semibold text-[var(--color-primary)]">
-            Admin Panel
+        <div className="flex h-16 items-center gap-2 border-b border-[var(--color-border-light)] bg-[var(--color-ink)] px-4">
+          <BrandMark href="/admin" compact invert />
+          <Link href="/admin" className="text-sm font-semibold tracking-tight text-white">
+            Ops
           </Link>
           <button
             type="button"

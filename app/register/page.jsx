@@ -4,10 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { AuthShell } from "@/components/layout/AuthShell";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { registerWithEmail, loginWithGoogle } from "@/lib/firebase/auth";
+import { registerWithEmail, loginWithGoogle, sendEmailVerificationLink } from "@/lib/firebase/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -23,6 +24,8 @@ export default function RegisterPage() {
     setError("");
     try {
       await registerWithEmail(email, password, displayName);
+      await sendEmailVerificationLink().catch(() => {});
+      sessionStorage.setItem("la_session", String(Date.now()));
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -46,7 +49,7 @@ export default function RegisterPage() {
 
   return (
     <PublicLayout>
-      <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
+      <AuthShell>
         <Card className="w-full">
           <CardHeader title="Create account" subtitle="Join Local App Sri Lanka" />
           {error && (
@@ -98,7 +101,7 @@ export default function RegisterPage() {
             </Link>
           </p>
         </Card>
-      </div>
+      </AuthShell>
     </PublicLayout>
   );
 }

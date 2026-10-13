@@ -2,8 +2,8 @@
  * Local App Sri Lanka — central configuration
  */
 const config = {
-  siteUrl: "http://localhost:3000",
-  googleMapsApiKey: "AIzaSyDHMohQkjCMuebaToXwDXP31EU2HnytYrQ",
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+  googleMapsApiKey: "AIzaSyCY42svFS6IU77uHuN2dxzHGfvJgE003ng",
 
   /** Must match deployed Cloud Functions region */
   functionsRegion: "us-central1",

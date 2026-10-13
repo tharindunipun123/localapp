@@ -315,6 +315,33 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /familyAccounts/{familyId} {
+      allow get: if isSignedIn() && (isAdmin() || request.auth.uid in resource.data.memberIds);
+      allow list: if isAdmin() ||
+        (isSignedIn() && request.auth.uid in resource.data.memberIds);
+      allow write: if false;
+    }
+
+    match /familyInvites/{inviteId} {
+      allow get: if isAdmin() ||
+        (isSignedIn() && (resource.data.toUserId == request.auth.uid || resource.data.fromUserId == request.auth.uid));
+      allow list: if isAdmin() ||
+        (isSignedIn() && (resource.data.toUserId == request.auth.uid || resource.data.fromUserId == request.auth.uid));
+      allow write: if false;
+    }
+
+    match /depositSessions/{sessionId} {
+      allow get: if isAdmin() || isOwner(resource.data.userId);
+      allow list: if isAdmin() || isOwner(resource.data.userId);
+      allow write: if false;
+    }
+
+    match /matrimonialEventRegistrations/{regId} {
+      allow get: if isAdmin() || isOwner(resource.data.userId);
+      allow list: if isAdmin() || isOwner(resource.data.userId);
+      allow write: if false;
+    }
+
     // Chat groups — REQ-CHT-003
     match /chatGroups/{groupId} {
       function isChatGroupMember() {
@@ -345,6 +372,13 @@ service cloud.firestore {
           (isChatGroupMember() && resource.data.senderId == request.auth.uid);
         allow delete: if isAdmin();
       }
+    }
+
+    // REQ-AUTH-012: failed login counter (email hash only, no secrets)
+    match /loginAttempts/{key} {
+      allow get: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(['failedCount', 'lockedUntil', 'updatedAt']);
+      allow delete: if isAdmin();
     }
   }
 }

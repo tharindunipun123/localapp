@@ -102,7 +102,7 @@ export default function AdminLotteryPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-2">
-        <Trophy className="h-6 w-6 text-yellow-500" />
+        <Trophy className="h-6 w-6 text-[var(--segment-lottery)]" />
         <h1 className="text-2xl font-bold">Lottery</h1>
       </div>
 

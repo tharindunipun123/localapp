@@ -5,13 +5,14 @@ import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { purchaseLotteryTicket } from "@/lib/services/cloudFunctions";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { PageHero } from "@/components/layout/PageHero";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useAuth } from "@/providers/AuthProvider";
 import { format } from "date-fns";
-import { Trophy, Ticket } from "lucide-react";
+import { Ticket } from "lucide-react";
 
 export default function LotteryPage() {
   return (
@@ -71,16 +72,22 @@ function LotteryContent() {
   }
 
   return (
+    <>
+      <PageHero
+        compact
+        segment="lottery"
+        image="/images/hero-lottery.png"
+        eyebrow="Rewards"
+        title="Loyalty lottery"
+        subtitle="Enter with locked loyalty points. Draws are administered from the operator console."
+      />
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-2">
-        <Trophy className="h-6 w-6 text-yellow-500" />
-        <h1 className="text-2xl font-bold">Lottery</h1>
-      </div>
-
       {message && (
         <p
           className={`mb-4 rounded-lg px-3 py-2 text-sm ${
-            isError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-700"
+            isError
+              ? "bg-[var(--color-danger-light)] text-[var(--color-danger-fg)]"
+              : "bg-[var(--color-success-light)] text-[var(--color-success-fg)]"
           }`}
         >
           {message}
@@ -111,7 +118,7 @@ function LotteryContent() {
                     <p className="mt-1 text-sm text-[var(--color-muted)]">{l.description}</p>
                   )}
                   <p className="mt-2 text-sm">
-                    <span className="font-medium">🎁 Prize:</span> {l.prize}
+                    <span className="font-medium text-[var(--segment-lottery)]">Prize:</span> {l.prize}
                   </p>
                   <p className="text-sm text-[var(--color-muted)]">
                     <Ticket className="mr-1 inline h-3.5 w-3.5" />
@@ -139,5 +146,6 @@ function LotteryContent() {
         })}
       </div>
     </div>
+    </>
   );
 }

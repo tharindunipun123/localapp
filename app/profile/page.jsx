@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { UserAvatar } from "@/components/chat/UserAvatar";
 import { useAuth } from "@/providers/AuthProvider";
-import { Calendar, Ticket, Wallet, Plus, Shield, Store, QrCode, BadgeCheck, Building2 } from "lucide-react";
+import { Calendar, Ticket, Wallet, Plus, Shield, Store, QrCode, BadgeCheck, Building2, Users } from "lucide-react";
 import { isVendorOrAdmin, isAdmin } from "@/lib/firebase/auth";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 
@@ -39,6 +39,7 @@ function ProfileContent() {
     { href: "/profile/qr", label: "My QR Code", icon: QrCode },
     { href: "/kyc", label: "KYC Verification", icon: BadgeCheck },
     { href: "/profile/corporate", label: "Corporate Binding", icon: Building2 },
+    { href: "/profile/family", label: "Family account", icon: Users },
     { href: "/events/create", label: "Create Event", icon: Plus },
   ];
 

@@ -16,14 +16,17 @@ import {
   Timestamp,
 } from "./helpers";
 import { DEFAULT_NOTIFYLK } from "./notifyLkConfig";
+import { ensureEventChatGroup, addUserToEventChat } from "./chat";
 
 export * from "./platform";
+export { submitKycDocuments, refreshKycDecision } from "./kycProvider";
 export * from "./extended";
 export * from "./phoneOtp";
 export * from "./adminApi";
 export * from "./features";
 export * from "./matrimonial";
 export * from "./chat";
+export * from "./family";
 
 const REGION = "us-central1";
 
@@ -92,6 +95,11 @@ export const moderateEvent = onCall({ region: REGION }, async (request) => {
   switch (action) {
     case "approve":
       updates.status = "approved";
+      if (event.chatEnabled !== false) {
+        const group = await ensureEventChatGroup(eventId, event, event.createdBy);
+        updates.chatGroupId = group.groupId;
+        updates.chatEnabled = true;
+      }
       await createNotification(
         event.createdBy,
         "Event Approved",
@@ -316,6 +324,19 @@ export const purchaseTicket = onCall({ region: REGION }, async (request) => {
     ticketId: result.ticketId,
   });
 
+  try {
+    const eventAfter = await eventRef.get();
+    const eventData = eventAfter.data();
+    if (eventData?.chatEnabled !== false) {
+      if (!eventData?.chatGroupId) {
+        await ensureEventChatGroup(eventId, eventData ?? preview, preview.createdBy);
+      }
+      await addUserToEventChat(eventId, userId);
+    }
+  } catch (err) {
+    console.error("Failed to join event chat after ticket purchase", err);
+  }
+
   return result;
 });
 
@@ -392,6 +413,125 @@ export const topUpWallet = onCall({ region: REGION }, async (request) => {
   });
 
   return { success: true, credited, fee };
+});
+
+/** Create a pending deposit session for the secure checkout page */
+export const initiateWalletDeposit = onCall({ region: REGION }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in");
+  const userId = request.auth.uid;
+  const { amount } = request.data as { amount: number };
+  if (!amount || amount < 100) throw new HttpsError("invalid-argument", "Minimum top-up is LKR 100");
+
+  try {
+    await requireKycApproved(userId);
+  } catch {
+    throw new HttpsError("permission-denied", "KYC verification required", { code: "KYC_REQUIRED" });
+  }
+
+  const settings = await getAppSettings();
+  const fee = Math.round(amount * (settings.depositFeePercent / 100) + settings.depositFeeFixed);
+  const credited = amount - fee;
+  const expiresAt = Timestamp.fromMillis(Date.now() + 15 * 60 * 1000);
+
+  const ref = await db.collection("depositSessions").add({
+    userId,
+    amount,
+    fee,
+    credited,
+    status: "pending",
+    method: "card",
+    expiresAt,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  return {
+    sessionId: ref.id,
+    amount,
+    fee,
+    credited,
+    expiresAt: expiresAt.toMillis(),
+  };
+});
+
+/** Complete a pending deposit after the checkout UI confirms payment */
+export const completeWalletDeposit = onCall({ region: REGION }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in");
+  const userId = request.auth.uid;
+  const { sessionId, method } = request.data as { sessionId: string; method?: string };
+  if (!sessionId) throw new HttpsError("invalid-argument", "sessionId required");
+
+  const sessionRef = db.doc(`depositSessions/${sessionId}`);
+  const walletRef = db.doc(`wallets/${userId}`);
+
+  const result = await db.runTransaction(async (tx) => {
+    const sessionSnap = await tx.get(sessionRef);
+    if (!sessionSnap.exists) throw new Error("SESSION_NOT_FOUND");
+    const session = sessionSnap.data()!;
+    if (session.userId !== userId) throw new Error("FORBIDDEN");
+    if (session.status === "completed") return { credited: session.credited, fee: session.fee, already: true };
+    if (session.status !== "pending") throw new Error("SESSION_INVALID");
+    const exp = session.expiresAt?.toMillis?.() ?? 0;
+    if (exp && Date.now() > exp) throw new Error("SESSION_EXPIRED");
+
+    const walletSnap = await tx.get(walletRef);
+    const balance = cashBalance(walletSnap.data());
+    const credited = session.credited as number;
+    const fee = session.fee as number;
+    const amount = session.amount as number;
+
+    tx.set(
+      walletRef,
+      {
+        cashBalance: balance + credited,
+        balance: balance + credited,
+        currency: "LKR",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    tx.update(sessionRef, {
+      status: "completed",
+      method: method ?? "card",
+      completedAt: FieldValue.serverTimestamp(),
+    });
+
+    const transactionRef = db.collection("transactions").doc();
+    tx.set(transactionRef, {
+      userId,
+      fromWalletId: "gateway",
+      toWalletId: `wallets/${userId}`,
+      type: "deposit",
+      amount: credited,
+      currency: "LKR",
+      status: "completed",
+      description: `Deposit LKR ${amount} via ${method ?? "card"} (fee LKR ${fee})`,
+      metadata: { grossAmount: amount, fee, sessionId, method: method ?? "card" },
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    if (fee > 0) {
+      tx.set(db.collection("transactions").doc(), {
+        userId,
+        type: "fee",
+        amount: fee,
+        currency: "LKR",
+        status: "completed",
+        description: "Deposit gateway fee",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return { credited, fee, already: false };
+  }).catch((err: Error) => {
+    if (err.message === "SESSION_NOT_FOUND") throw new HttpsError("not-found", "Checkout session not found");
+    if (err.message === "FORBIDDEN") throw new HttpsError("permission-denied", "Not your checkout session");
+    if (err.message === "SESSION_INVALID") throw new HttpsError("failed-precondition", "Session already used");
+    if (err.message === "SESSION_EXPIRED") throw new HttpsError("deadline-exceeded", "Checkout session expired");
+    throw err;
+  });
+
+  return { success: true, ...result };
 });
 
 /** Update attraction rating when review changes */

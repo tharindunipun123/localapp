@@ -242,7 +242,8 @@ export const drawLottery = onCall({ region: REGION }, async (request) => {
 
   if (entriesSnap.empty) throw new HttpsError("failed-precondition", "No entries in this lottery");
 
-  const randomIndex = Math.floor(Math.random() * entriesSnap.docs.length);
+  const { randomInt } = await import("crypto");
+  const randomIndex = randomInt(0, entriesSnap.docs.length);
   const winnerEntry = entriesSnap.docs[randomIndex].data();
   const winnerId = winnerEntry.userId as string;
 
@@ -361,5 +362,46 @@ export const expireLoyaltyPoints = onSchedule(
     }
 
     console.log(`Expired loyalty grants: ${totalExpired}`);
+  }
+);
+
+/** REQ-LOT-003: auto-draw lotteries whose drawDate has passed. */
+export const autoDrawDueLotteries = onSchedule(
+  { schedule: "every 15 minutes", region: REGION },
+  async () => {
+    const now = Timestamp.now();
+    const snap = await db.collection("lotteries").where("status", "==", "active").limit(50).get();
+    const { randomInt } = await import("crypto");
+
+    for (const lotteryDoc of snap.docs) {
+      const lottery = lotteryDoc.data();
+      const drawMs = lottery.drawDate?.toMillis?.() ?? 0;
+      if (!drawMs || drawMs > now.toMillis()) continue;
+
+      const entriesSnap = await db.collection("lotteryEntries").where("lotteryId", "==", lotteryDoc.id).get();
+      if (entriesSnap.empty) {
+        await lotteryDoc.ref.update({
+          status: "closed",
+          drawnAt: FieldValue.serverTimestamp(),
+          drawnBy: "scheduler",
+        });
+        continue;
+      }
+
+      const winnerEntry = entriesSnap.docs[randomInt(0, entriesSnap.docs.length)].data();
+      const winnerId = winnerEntry.userId as string;
+      await lotteryDoc.ref.update({
+        status: "drawn",
+        winnerId,
+        drawnAt: FieldValue.serverTimestamp(),
+        drawnBy: "scheduler",
+      });
+      await createNotification(
+        winnerId,
+        "You Won! 🎉",
+        `Congratulations! You won the "${lottery.title}" lottery. Prize: ${lottery.prize}`,
+        "lottery_win"
+      );
+    }
   }
 );

@@ -37,6 +37,7 @@ exports.webhookLoyaltyGrant = exports.processVendorWithdrawal = exports.requestV
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const helpers_1 = require("./helpers");
+const kycProvider_1 = require("./kycProvider");
 const REGION = "us-central1";
 function mapHttpsError(err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -415,10 +416,9 @@ exports.validateUserQr = (0, https_1.onCall)({ region: REGION }, async (request)
         kycStatus: (_a = user.kycStatus) !== null && _a !== void 0 ? _a : "none",
     };
 });
-const DIDIT_API = "https://verification.didit.me/v3";
-/** Create a Didit KYC verification session and return the hosted URL */
+/** Create a Didit hosted KYC session (OCR + liveness + face match) */
 exports.createKycSession = (0, https_1.onCall)({ region: REGION }, async (request) => {
-    var _a, _b, _c;
+    var _a;
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "Must be signed in");
     const uid = request.auth.uid;
@@ -426,59 +426,11 @@ exports.createKycSession = (0, https_1.onCall)({ region: REGION }, async (reques
     if (((_a = userSnap.data()) === null || _a === void 0 ? void 0 : _a.kycStatus) === "approved") {
         throw new https_1.HttpsError("failed-precondition", "KYC already approved");
     }
-    const settings = await (0, helpers_1.getAppSettings)();
-    const apiKey = settings.diditApiKey;
-    if (!apiKey)
-        throw new https_1.HttpsError("internal", "KYC provider not configured");
-    // Ensure a workflow exists; create one if the admin hasn't set one yet
-    let workflowId = settings.diditWorkflowId;
-    if (!workflowId) {
-        const wfRes = await fetch(`${DIDIT_API}/workflows/`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-            body: JSON.stringify({ features: ["OCR", "FACE_MATCH"] }),
-        });
-        if (!wfRes.ok) {
-            throw new https_1.HttpsError("internal", "Failed to create Didit workflow");
-        }
-        const wf = (await wfRes.json());
-        workflowId = (_c = (_b = wf.id) !== null && _b !== void 0 ? _b : wf.workflow_id) !== null && _c !== void 0 ? _c : "";
-        if (workflowId) {
-            await helpers_1.db.doc("settings/app").set({ diditWorkflowId: workflowId }, { merge: true });
-        }
-    }
-    const sessionRes = await fetch(`${DIDIT_API}/session/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-        body: JSON.stringify({
-            workflow_id: workflowId,
-            vendor_data: uid,
-            callback: `${settings.siteUrl}/kyc/complete`,
-        }),
-    });
-    if (!sessionRes.ok) {
-        const errBody = await sessionRes.text();
-        throw new https_1.HttpsError("internal", `Didit session error: ${errBody}`);
-    }
-    const session = (await sessionRes.json());
-    await helpers_1.db.doc(`kycSubmissions/${uid}`).set({
-        userId: uid,
-        sessionId: session.session_id,
-        provider: "didit",
-        status: "pending",
-        diditStatus: session.status,
-        createdAt: helpers_1.FieldValue.serverTimestamp(),
-        updatedAt: helpers_1.FieldValue.serverTimestamp(),
-    }, { merge: true });
-    await helpers_1.db.doc(`users/${uid}`).update({
-        kycStatus: "pending",
-        updatedAt: helpers_1.FieldValue.serverTimestamp(),
-    });
-    return { url: session.url, sessionId: session.session_id };
+    return (0, kycProvider_1.createDiditHostedSession)(uid);
 });
 /** Didit webhook — receives real-time KYC status updates */
 exports.diditWebhook = (0, https_1.onRequest)({ region: REGION }, async (req, res) => {
-    var _a, _b, _c;
+    var _a, _b;
     if (req.method !== "POST") {
         res.status(405).json({ error: "Method not allowed" });
         return;
@@ -512,38 +464,15 @@ exports.diditWebhook = (0, https_1.onRequest)({ region: REGION }, async (req, re
         res.status(400).json({ error: "Missing vendor_data or status" });
         return;
     }
-    // Map Didit status → our internal KYC status
-    const statusMap = {
-        Approved: "approved",
-        Declined: "rejected",
-        "In Review": "pending",
-        "Not Started": "pending",
-        "In Progress": "pending",
-        Resubmitted: "pending",
-        Abandoned: "rejected",
-        Expired: "rejected",
-    };
-    const kycStatus = (_a = statusMap[diditStatus]) !== null && _a !== void 0 ? _a : "pending";
+    const kycStatus = (0, kycProvider_1.mapDiditSessionStatus)(diditStatus);
     try {
-        await helpers_1.db.doc(`kycSubmissions/${userId}`).set({
+        await (0, kycProvider_1.applyKycOutcome)(userId, kycStatus, {
             diditStatus,
-            status: kycStatus,
-            sessionId: (_b = payload.session_id) !== null && _b !== void 0 ? _b : "",
-            decision: (_c = payload.decision) !== null && _c !== void 0 ? _c : {},
-            updatedAt: helpers_1.FieldValue.serverTimestamp(),
-        }, { merge: true });
-        await helpers_1.db.doc(`users/${userId}`).update({
-            kycStatus,
-            updatedAt: helpers_1.FieldValue.serverTimestamp(),
+            sessionId: (_a = payload.session_id) !== null && _a !== void 0 ? _a : "",
+            decision: (_b = payload.decision) !== null && _b !== void 0 ? _b : {},
+            provider: "didit",
+            mode: "hosted",
         });
-        // On automatic approval activate the wallet spending limits
-        if (kycStatus === "approved") {
-            await helpers_1.db.doc(`wallets/${userId}`).set({
-                spendingLimitDaily: settings.defaultSpendingLimitDaily,
-                spendingLimitMonthly: settings.defaultSpendingLimitMonthly,
-                updatedAt: helpers_1.FieldValue.serverTimestamp(),
-            }, { merge: true });
-        }
         res.json({ received: true });
     }
     catch (err) {

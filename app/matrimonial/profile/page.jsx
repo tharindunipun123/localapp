@@ -7,7 +7,7 @@ import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { getMyMatrimonialProfile, getMyMatrimonialInterests, respondToMatrimonialInterest } from "@/lib/services/cloudFunctions";
+import { getMyMatrimonialProfile, getMyMatrimonialInterests, respondToMatrimonialInterest, setMatrimonialProfileActive } from "@/lib/services/cloudFunctions";
 import { useAuth } from "@/providers/AuthProvider";
 import { format } from "date-fns";
 import { Heart, User, Pencil } from "lucide-react";
@@ -81,14 +81,26 @@ function MyProfileContent() {
     <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Heart className="h-6 w-6 text-rose-500" />
+          <Heart className="h-6 w-6 text-[var(--segment-matrimonial)]" />
           <h1 className="text-2xl font-bold">My Matrimonial Profile</h1>
         </div>
-        <Link href="/matrimonial/profile/create">
-          <Button variant="outline" size="sm">
-            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+        <div className="flex gap-2">
+          <Link href="/matrimonial/profile/create">
+            <Button variant="outline" size="sm">
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+            </Button>
+          </Link>
+          <Button
+            variant={matProfile.isActive === false ? "primary" : "ghost"}
+            size="sm"
+            onClick={async () => {
+              await setMatrimonialProfileActive(matProfile.isActive === false);
+              await load();
+            }}
+          >
+            {matProfile.isActive === false ? "Reactivate" : "Hide profile"}
           </Button>
-        </Link>
+        </div>
       </div>
 
       <Card>

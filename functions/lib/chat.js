@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.archiveExpiredEventChats = exports.getMyChatGroups = exports.reviewChatReport = exports.reportChatMessage = exports.joinEventChatGroup = exports.createOrGetDirectMessage = exports.createEventChatGroup = void 0;
+exports.ensureEventChatGroup = ensureEventChatGroup;
+exports.addUserToEventChat = addUserToEventChat;
 /**
  * Chat & Group Module — REQ-CHT-001 through REQ-CHT-008
  *
@@ -15,10 +17,52 @@ const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const helpers_1 = require("./helpers");
 const REGION = "us-central1";
+async function ensureEventChatGroup(eventId, event, createdBy) {
+    var _a;
+    const existing = await helpers_1.db.collection("chatGroups").where("eventId", "==", eventId).limit(1).get();
+    if (!existing.empty) {
+        const groupId = existing.docs[0].id;
+        if (event.chatGroupId !== groupId) {
+            await helpers_1.db.doc(`events/${eventId}`).update({
+                chatGroupId: groupId,
+                updatedAt: helpers_1.FieldValue.serverTimestamp(),
+            });
+        }
+        return { groupId, exists: true };
+    }
+    const archiveAt = event.endDatetime
+        ? helpers_1.Timestamp.fromMillis(event.endDatetime.toMillis() + 7 * 86400000)
+        : null;
+    const ref = await helpers_1.db.collection("chatGroups").add({
+        type: "event_group",
+        eventId,
+        name: (_a = event.title) !== null && _a !== void 0 ? _a : "Event Chat",
+        createdBy,
+        memberIds: [event.createdBy].filter(Boolean),
+        isArchived: false,
+        isPublic: true,
+        archiveAt,
+        createdAt: helpers_1.FieldValue.serverTimestamp(),
+        updatedAt: helpers_1.FieldValue.serverTimestamp(),
+    });
+    await helpers_1.db.doc(`events/${eventId}`).update({
+        chatGroupId: ref.id,
+        updatedAt: helpers_1.FieldValue.serverTimestamp(),
+    });
+    return { groupId: ref.id, exists: false };
+}
+async function addUserToEventChat(eventId, userId) {
+    const existing = await helpers_1.db.collection("chatGroups").where("eventId", "==", eventId).limit(1).get();
+    if (existing.empty)
+        return;
+    await existing.docs[0].ref.update({
+        memberIds: helpers_1.FieldValue.arrayUnion(userId),
+        updatedAt: helpers_1.FieldValue.serverTimestamp(),
+    });
+}
 // ─── Group creation ───────────────────────────────────────────────────────────
 /** REQ-CHT-001: Create an event chat group. Called when chat_enabled event is approved. */
 exports.createEventChatGroup = (0, https_1.onCall)({ region: REGION }, async (request) => {
-    var _a;
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "Must be signed in");
     const { eventId } = request.data;
@@ -28,31 +72,11 @@ exports.createEventChatGroup = (0, https_1.onCall)({ region: REGION }, async (re
     if (!eventSnap.exists)
         throw new https_1.HttpsError("not-found", "Event not found");
     const event = eventSnap.data();
-    // Only event creator or admin can create the group
     const adminCaller = await (0, helpers_1.isAdmin)(request.auth.uid);
     if (!adminCaller && event.createdBy !== request.auth.uid) {
         throw new https_1.HttpsError("permission-denied", "Only event creator or admin can create chat group");
     }
-    const existing = await helpers_1.db.collection("chatGroups").where("eventId", "==", eventId).limit(1).get();
-    if (!existing.empty)
-        return { groupId: existing.docs[0].id, exists: true };
-    const archiveAt = event.endDatetime
-        ? helpers_1.Timestamp.fromMillis(event.endDatetime.toMillis() + 7 * 86400000)
-        : null;
-    const ref = await helpers_1.db.collection("chatGroups").add({
-        type: "event_group",
-        eventId,
-        name: (_a = event.title) !== null && _a !== void 0 ? _a : "Event Chat",
-        createdBy: request.auth.uid,
-        memberIds: [event.createdBy],
-        isArchived: false,
-        isPublic: true,
-        archiveAt,
-        createdAt: helpers_1.FieldValue.serverTimestamp(),
-        updatedAt: helpers_1.FieldValue.serverTimestamp(),
-    });
-    await helpers_1.db.doc(`events/${eventId}`).update({ chatGroupId: ref.id, updatedAt: helpers_1.FieldValue.serverTimestamp() });
-    return { groupId: ref.id, exists: false };
+    return ensureEventChatGroup(eventId, event, request.auth.uid);
 });
 /** REQ-CHT-003: Create or get a direct-message channel between two users. */
 exports.createOrGetDirectMessage = (0, https_1.onCall)({ region: REGION }, async (request) => {

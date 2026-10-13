@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.claimAdminRole = exports.getAdminUsersList = exports.getAdminDashboardStats = exports.getAdminKycQueue = exports.getAdminVendorData = void 0;
+exports.claimAdminRole = exports.getAdminChatReports = exports.getAdminUsersList = exports.broadcastNotification = exports.adminManageUser = exports.getAdminDashboardStats = exports.getAdminKycQueue = exports.getAdminVendorData = void 0;
 const adminSdk = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-admin/firestore");
@@ -99,22 +99,141 @@ exports.getAdminKycQueue = (0, https_1.onCall)({ region: REGION }, async (reques
         .get();
     return snap.docs.map((d) => mapDoc(d.id, d.data()));
 });
-/** Admin: dashboard stats */
+/** Admin: dashboard stats (SRS 3.10.1) */
 exports.getAdminDashboardStats = (0, https_1.onCall)({ region: REGION }, async (request) => {
     var _a, _b;
     await requireAdmin((_a = request.auth) === null || _a === void 0 ? void 0 : _a.uid, (_b = request.auth) === null || _b === void 0 ? void 0 : _b.token);
-    const [pending, approved, users, reported] = await Promise.all([
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const [pending, approved, users, reported, kyc, vendors, withdrawals, lotteries, txSnap] = await Promise.all([
         helpers_1.db.collection("events").where("status", "==", "pending").get(),
         helpers_1.db.collection("events").where("status", "==", "approved").limit(500).get(),
         helpers_1.db.collection("users").limit(500).get(),
         helpers_1.db.collection("reviews").where("status", "==", "reported").get(),
+        helpers_1.db.collection("kycSubmissions").where("status", "==", "pending").get(),
+        helpers_1.db.collection("vendors").where("status", "==", "pending").get(),
+        helpers_1.db.collection("withdrawalRequests").where("status", "==", "pending").get(),
+        helpers_1.db.collection("lotteries").where("status", "==", "active").get(),
+        helpers_1.db.collection("transactions").orderBy("createdAt", "desc").limit(400).get().catch(() => null),
     ]);
+    let kycApproved = 0;
+    let emailVerified = 0;
+    users.forEach((d) => {
+        const u = d.data();
+        if (u.kycStatus === "approved")
+            kycApproved += 1;
+        if (u.emailVerified)
+            emailVerified += 1;
+    });
+    let deposit7d = 0;
+    let spend7d = 0;
+    let p2p7d = 0;
+    txSnap === null || txSnap === void 0 ? void 0 : txSnap.docs.forEach((d) => {
+        var _a, _b, _c, _d;
+        const t = d.data();
+        const created = (_c = (_b = (_a = t.createdAt) === null || _a === void 0 ? void 0 : _a.toMillis) === null || _b === void 0 ? void 0 : _b.call(_a)) !== null && _c !== void 0 ? _c : 0;
+        if (created < sevenDaysAgo)
+            return;
+        const amount = Number((_d = t.amount) !== null && _d !== void 0 ? _d : 0);
+        if (t.type === "deposit")
+            deposit7d += amount;
+        if (t.type === "ticket_purchase" || t.type === "spend")
+            spend7d += amount;
+        if (t.type === "transfer" || t.type === "p2p_transfer")
+            p2p7d += amount;
+    });
+    let lotteryTickets = 0;
+    let lotteryPool = 0;
+    lotteries.forEach((d) => {
+        var _a, _b, _c;
+        const l = d.data();
+        lotteryTickets += Number((_a = l.entryCount) !== null && _a !== void 0 ? _a : 0);
+        lotteryPool += Number((_b = l.pointsCost) !== null && _b !== void 0 ? _b : 0) * Number((_c = l.entryCount) !== null && _c !== void 0 ? _c : 0);
+    });
     return {
         pendingEvents: pending.size,
         approvedEvents: approved.size,
         totalUsers: users.size,
         reportedReviews: reported.size,
+        pendingKyc: kyc.size,
+        pendingVendors: vendors.size,
+        pendingWithdrawals: withdrawals.size,
+        kycApproved,
+        emailVerified,
+        activeLotteries: lotteries.size,
+        lotteryTickets,
+        lotteryPool,
+        deposit7d,
+        spend7d,
+        p2p7d,
+        vendorCount: vendors.size,
     };
+});
+/** REQ-AUTH-008 / REQ-AUTH-011: disable user, revoke sessions, sync custom claims */
+exports.adminManageUser = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    var _a, _b;
+    await requireAdmin((_a = request.auth) === null || _a === void 0 ? void 0 : _a.uid, (_b = request.auth) === null || _b === void 0 ? void 0 : _b.token);
+    const { userId, action, role } = request.data;
+    if (!userId || !action)
+        throw new https_1.HttpsError("invalid-argument", "userId and action required");
+    const ref = helpers_1.db.doc(`users/${userId}`);
+    if (action === "disable") {
+        await adminSdk.auth().updateUser(userId, { disabled: true }).catch(() => undefined);
+        await ref.update({ disabled: true, forceLogoutAt: firestore_1.FieldValue.serverTimestamp(), updatedAt: firestore_1.FieldValue.serverTimestamp() });
+    }
+    else if (action === "enable") {
+        await adminSdk.auth().updateUser(userId, { disabled: false }).catch(() => undefined);
+        await ref.update({ disabled: false, updatedAt: firestore_1.FieldValue.serverTimestamp() });
+    }
+    else if (action === "force_logout") {
+        await adminSdk.auth().revokeRefreshTokens(userId).catch(() => undefined);
+        await ref.update({ forceLogoutAt: firestore_1.FieldValue.serverTimestamp(), updatedAt: firestore_1.FieldValue.serverTimestamp() });
+    }
+    else if (action === "set_role") {
+        if (!role || !["user", "vendor", "admin"].includes(role)) {
+            throw new https_1.HttpsError("invalid-argument", "Invalid role");
+        }
+        await ref.update({ role, updatedAt: firestore_1.FieldValue.serverTimestamp() });
+        await adminSdk.auth().setCustomUserClaims(userId, { admin: role === "admin" });
+    }
+    else {
+        throw new https_1.HttpsError("invalid-argument", "Invalid action");
+    }
+    return { success: true };
+});
+/** System-wide notification broadcast (SRS 3.10.2) */
+exports.broadcastNotification = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    var _a, _b;
+    await requireAdmin((_a = request.auth) === null || _a === void 0 ? void 0 : _a.uid, (_b = request.auth) === null || _b === void 0 ? void 0 : _b.token);
+    const { title, body } = request.data;
+    if (!title || !body)
+        throw new https_1.HttpsError("invalid-argument", "title and body required");
+    const users = await helpers_1.db.collection("users").limit(500).get();
+    const batchSize = 400;
+    let sent = 0;
+    let batch = helpers_1.db.batch();
+    let count = 0;
+    for (const docSnap of users.docs) {
+        const nref = helpers_1.db.collection("notifications").doc();
+        batch.set(nref, {
+            userId: docSnap.id,
+            title,
+            body,
+            type: "broadcast",
+            read: false,
+            data: {},
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+        });
+        count += 1;
+        sent += 1;
+        if (count >= batchSize) {
+            await batch.commit();
+            batch = helpers_1.db.batch();
+            count = 0;
+        }
+    }
+    if (count > 0)
+        await batch.commit();
+    return { success: true, sent };
 });
 /** Admin: all users for management table */
 exports.getAdminUsersList = (0, https_1.onCall)({ region: REGION }, async (request) => {
@@ -122,6 +241,18 @@ exports.getAdminUsersList = (0, https_1.onCall)({ region: REGION }, async (reque
     await requireAdmin((_a = request.auth) === null || _a === void 0 ? void 0 : _a.uid, (_b = request.auth) === null || _b === void 0 ? void 0 : _b.token);
     const snap = await helpers_1.db.collection("users").orderBy("createdAt", "desc").limit(200).get();
     return snap.docs.map((d) => mapDoc(d.id, { uid: d.id, ...d.data() }));
+});
+/** Admin: pending chat message reports */
+exports.getAdminChatReports = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    var _a, _b;
+    await requireAdmin((_a = request.auth) === null || _a === void 0 ? void 0 : _a.uid, (_b = request.auth) === null || _b === void 0 ? void 0 : _b.token);
+    const snap = await helpers_1.db
+        .collection("chatMessageReports")
+        .where("status", "==", "pending")
+        .orderBy("createdAt", "desc")
+        .limit(100)
+        .get();
+    return snap.docs.map((d) => mapDoc(d.id, d.data()));
 });
 /**
  * Bootstrap / repair admin role.

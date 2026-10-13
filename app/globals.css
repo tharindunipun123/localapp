@@ -1,44 +1,57 @@
 @import "tailwindcss";
 
-/* Design tokens — keep in sync with lib/theme.js */
+/* Local App — light blue + blue theme. Keep in sync with lib/theme.js */
 :root {
-  --color-bg: #f8fafc;
-  --color-fg: #0f172a;
-  --color-muted: #64748b;
-  --color-muted-fg: #94a3b8;
+  --color-ink: #0a3a6b;
+  --color-ink-soft: #0e4d8a;
+  --color-bg: #eaf4fb;
+  --color-fg: #0a3a6b;
+  --color-muted: #4d7394;
+  --color-muted-fg: #7ea0bb;
   --color-card: #ffffff;
-  --color-card-fg: #0f172a;
-  --color-border: #e2e8f0;
-  --color-border-light: #f1f5f9;
-  --color-input: #e2e8f0;
-  --color-ring: #7dd3fc;
-  --color-primary: #0284c7;
-  --color-primary-hover: #0369a1;
-  --color-primary-light: #e0f2fe;
+  --color-card-fg: #0a3a6b;
+  --color-border: #c5ddf0;
+  --color-border-light: #dceef9;
+  --color-input: #c5ddf0;
+  --color-ring: #7ec8f0;
+  --color-primary: #1b7fdb;
+  --color-primary-hover: #1464b4;
+  --color-primary-light: #d7ecfb;
   --color-primary-fg: #ffffff;
-  --color-secondary: #f0f9ff;
-  --color-secondary-fg: #0369a1;
-  --color-accent: #0ea5e9;
-  --color-success: #059669;
-  --color-success-light: #ecfdf5;
-  --color-success-fg: #047857;
-  --color-warning: #d97706;
-  --color-warning-light: #fffbeb;
-  --color-warning-fg: #b45309;
-  --color-danger: #dc2626;
-  --color-danger-light: #fef2f2;
-  --color-danger-fg: #b91c1c;
-  --color-hero-from: #0284c7;
-  --color-hero-via: #0ea5e9;
-  --color-hero-to: #0369a1;
+  --color-secondary: #e3f2fc;
+  --color-secondary-fg: #0e4d8a;
+  --color-accent: #3ba4f0;
+  --color-money: #0e6bc4;
+  --color-money-light: #d7ecfb;
+  --color-money-fg: #0a4e8a;
+  --color-success: #17806a;
+  --color-success-light: #e5f6f2;
+  --color-success-fg: #126655;
+  --color-warning: #c4841d;
+  --color-warning-light: #f8f1e2;
+  --color-warning-fg: #8a5c12;
+  --color-danger: #c43a3a;
+  --color-danger-light: #f8eaea;
+  --color-danger-fg: #9a2c2c;
+  --color-hero-from: #0a3a6b;
+  --color-hero-via: #1b7fdb;
+  --color-hero-to: #3ba4f0;
+  --segment-events: #1b7fdb;
+  --segment-places: #2b93e0;
+  --segment-wallet: #0e6bc4;
+  --segment-lottery: #3ba4f0;
+  --segment-matrimonial: #4a8fd9;
+  --segment-kyc: #0a4e8a;
+  --segment-family: #2a7fbf;
+  --segment-admin: #0a3a6b;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
-  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.07), 0 2px 4px -2px rgb(15 23 42 / 0.05);
-  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.05);
-  --font-sans: var(--font-inter), var(--font-noto-sinhala), system-ui, sans-serif;
+  --shadow-sm: 0 1px 2px 0 rgb(10 58 107 / 0.06);
+  --shadow-md: 0 4px 6px -1px rgb(10 58 107 / 0.08), 0 2px 4px -2px rgb(10 58 107 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(10 58 107 / 0.1), 0 4px 6px -4px rgb(10 58 107 / 0.06);
+  --font-sans: var(--font-jakarta), var(--font-noto-sinhala), system-ui, sans-serif;
 }
 
 @theme inline {
@@ -56,9 +69,25 @@
 }
 
 body {
-  background: var(--color-bg);
+  background:
+    radial-gradient(1200px 520px at 0% -8%, #cfe8fa 0%, transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, #b9def8 0%, transparent 50%),
+    var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
+}
+
+.money {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-primary);
 }
 
 .line-clamp-1 {
@@ -80,4 +109,110 @@ body {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+.app-preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(900px 420px at 50% 0%, #cfe8fa 0%, transparent 58%),
+    var(--color-bg);
+  transition: opacity 0.28s ease, visibility 0.28s ease;
+}
+
+html.app-booted .app-preloader {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.app-preloader-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--color-ink);
+}
+
+.app-preloader-inner img {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+}
+
+.app-preloader-inner p,
+.page-loader-copy {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
+.app-preloader-bar,
+.page-loader-bar {
+  width: 112px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-border);
+}
+
+.app-preloader-bar span,
+.page-loader-bar span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  animation: la-progress 0.7s ease-in-out infinite;
+}
+
+.page-loader {
+  display: flex;
+  min-height: 46vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.page-loader-mark img {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+
+.route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 99998;
+  height: 2px;
+  width: 0;
+  background: var(--color-primary);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.route-progress.is-active {
+  opacity: 1;
+  animation: la-route 0.48s ease-out forwards;
+}
+
+@keyframes la-progress {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+@keyframes la-route {
+  0% { width: 0; }
+  70% { width: 82%; }
+  100% { width: 100%; opacity: 0; }
 }

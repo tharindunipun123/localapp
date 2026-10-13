@@ -14,20 +14,25 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ensureAppSettings = exports.initUserWallet = exports.updateAttractionRating = exports.topUpWallet = exports.purchaseTicket = exports.linkEventToAttraction = exports.moderateEvent = exports.expireOldEvents = void 0;
+exports.ensureAppSettings = exports.initUserWallet = exports.updateAttractionRating = exports.completeWalletDeposit = exports.initiateWalletDeposit = exports.topUpWallet = exports.purchaseTicket = exports.linkEventToAttraction = exports.moderateEvent = exports.expireOldEvents = exports.refreshKycDecision = exports.submitKycDocuments = void 0;
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const crypto_1 = require("crypto");
 const helpers_1 = require("./helpers");
 const notifyLkConfig_1 = require("./notifyLkConfig");
+const chat_1 = require("./chat");
 __exportStar(require("./platform"), exports);
+var kycProvider_1 = require("./kycProvider");
+Object.defineProperty(exports, "submitKycDocuments", { enumerable: true, get: function () { return kycProvider_1.submitKycDocuments; } });
+Object.defineProperty(exports, "refreshKycDecision", { enumerable: true, get: function () { return kycProvider_1.refreshKycDecision; } });
 __exportStar(require("./extended"), exports);
 __exportStar(require("./phoneOtp"), exports);
 __exportStar(require("./adminApi"), exports);
 __exportStar(require("./features"), exports);
 __exportStar(require("./matrimonial"), exports);
 __exportStar(require("./chat"), exports);
+__exportStar(require("./family"), exports);
 const REGION = "us-central1";
 /** Expire old events — runs every hour */
 exports.expireOldEvents = (0, scheduler_1.onSchedule)({ schedule: "every 1 hours", region: REGION }, async () => {
@@ -78,6 +83,11 @@ exports.moderateEvent = (0, https_1.onCall)({ region: REGION }, async (request) 
     switch (action) {
         case "approve":
             updates.status = "approved";
+            if (event.chatEnabled !== false) {
+                const group = await (0, chat_1.ensureEventChatGroup)(eventId, event, event.createdBy);
+                updates.chatGroupId = group.groupId;
+                updates.chatEnabled = true;
+            }
             await (0, helpers_1.createNotification)(event.createdBy, "Event Approved", `Your event "${event.title}" has been approved.`, "event_approved", { eventId });
             break;
         case "reject":
@@ -267,6 +277,19 @@ exports.purchaseTicket = (0, https_1.onCall)({ region: REGION }, async (request)
         eventId,
         ticketId: result.ticketId,
     });
+    try {
+        const eventAfter = await eventRef.get();
+        const eventData = eventAfter.data();
+        if ((eventData === null || eventData === void 0 ? void 0 : eventData.chatEnabled) !== false) {
+            if (!(eventData === null || eventData === void 0 ? void 0 : eventData.chatGroupId)) {
+                await (0, chat_1.ensureEventChatGroup)(eventId, eventData !== null && eventData !== void 0 ? eventData : preview, preview.createdBy);
+            }
+            await (0, chat_1.addUserToEventChat)(eventId, userId);
+        }
+    }
+    catch (err) {
+        console.error("Failed to join event chat after ticket purchase", err);
+    }
     return result;
 });
 /** Top up wallet with deposit fee — requires KYC */
@@ -330,6 +353,121 @@ exports.topUpWallet = (0, https_1.onCall)({ region: REGION }, async (request) =>
         }
     });
     return { success: true, credited, fee };
+});
+/** Create a pending deposit session for the secure checkout page */
+exports.initiateWalletDeposit = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError("unauthenticated", "Must be signed in");
+    const userId = request.auth.uid;
+    const { amount } = request.data;
+    if (!amount || amount < 100)
+        throw new https_1.HttpsError("invalid-argument", "Minimum top-up is LKR 100");
+    try {
+        await (0, helpers_1.requireKycApproved)(userId);
+    }
+    catch (_a) {
+        throw new https_1.HttpsError("permission-denied", "KYC verification required", { code: "KYC_REQUIRED" });
+    }
+    const settings = await (0, helpers_1.getAppSettings)();
+    const fee = Math.round(amount * (settings.depositFeePercent / 100) + settings.depositFeeFixed);
+    const credited = amount - fee;
+    const expiresAt = helpers_1.Timestamp.fromMillis(Date.now() + 15 * 60 * 1000);
+    const ref = await helpers_1.db.collection("depositSessions").add({
+        userId,
+        amount,
+        fee,
+        credited,
+        status: "pending",
+        method: "card",
+        expiresAt,
+        createdAt: helpers_1.FieldValue.serverTimestamp(),
+    });
+    return {
+        sessionId: ref.id,
+        amount,
+        fee,
+        credited,
+        expiresAt: expiresAt.toMillis(),
+    };
+});
+/** Complete a pending deposit after the checkout UI confirms payment */
+exports.completeWalletDeposit = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError("unauthenticated", "Must be signed in");
+    const userId = request.auth.uid;
+    const { sessionId, method } = request.data;
+    if (!sessionId)
+        throw new https_1.HttpsError("invalid-argument", "sessionId required");
+    const sessionRef = helpers_1.db.doc(`depositSessions/${sessionId}`);
+    const walletRef = helpers_1.db.doc(`wallets/${userId}`);
+    const result = await helpers_1.db.runTransaction(async (tx) => {
+        var _a, _b, _c;
+        const sessionSnap = await tx.get(sessionRef);
+        if (!sessionSnap.exists)
+            throw new Error("SESSION_NOT_FOUND");
+        const session = sessionSnap.data();
+        if (session.userId !== userId)
+            throw new Error("FORBIDDEN");
+        if (session.status === "completed")
+            return { credited: session.credited, fee: session.fee, already: true };
+        if (session.status !== "pending")
+            throw new Error("SESSION_INVALID");
+        const exp = (_c = (_b = (_a = session.expiresAt) === null || _a === void 0 ? void 0 : _a.toMillis) === null || _b === void 0 ? void 0 : _b.call(_a)) !== null && _c !== void 0 ? _c : 0;
+        if (exp && Date.now() > exp)
+            throw new Error("SESSION_EXPIRED");
+        const walletSnap = await tx.get(walletRef);
+        const balance = (0, helpers_1.cashBalance)(walletSnap.data());
+        const credited = session.credited;
+        const fee = session.fee;
+        const amount = session.amount;
+        tx.set(walletRef, {
+            cashBalance: balance + credited,
+            balance: balance + credited,
+            currency: "LKR",
+            updatedAt: helpers_1.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        tx.update(sessionRef, {
+            status: "completed",
+            method: method !== null && method !== void 0 ? method : "card",
+            completedAt: helpers_1.FieldValue.serverTimestamp(),
+        });
+        const transactionRef = helpers_1.db.collection("transactions").doc();
+        tx.set(transactionRef, {
+            userId,
+            fromWalletId: "gateway",
+            toWalletId: `wallets/${userId}`,
+            type: "deposit",
+            amount: credited,
+            currency: "LKR",
+            status: "completed",
+            description: `Deposit LKR ${amount} via ${method !== null && method !== void 0 ? method : "card"} (fee LKR ${fee})`,
+            metadata: { grossAmount: amount, fee, sessionId, method: method !== null && method !== void 0 ? method : "card" },
+            createdAt: helpers_1.FieldValue.serverTimestamp(),
+        });
+        if (fee > 0) {
+            tx.set(helpers_1.db.collection("transactions").doc(), {
+                userId,
+                type: "fee",
+                amount: fee,
+                currency: "LKR",
+                status: "completed",
+                description: "Deposit gateway fee",
+                createdAt: helpers_1.FieldValue.serverTimestamp(),
+            });
+        }
+        return { credited, fee, already: false };
+    }).catch((err) => {
+        if (err.message === "SESSION_NOT_FOUND")
+            throw new https_1.HttpsError("not-found", "Checkout session not found");
+        if (err.message === "FORBIDDEN")
+            throw new https_1.HttpsError("permission-denied", "Not your checkout session");
+        if (err.message === "SESSION_INVALID")
+            throw new https_1.HttpsError("failed-precondition", "Session already used");
+        if (err.message === "SESSION_EXPIRED")
+            throw new https_1.HttpsError("deadline-exceeded", "Checkout session expired");
+        throw err;
+    });
+    return { success: true, ...result };
 });
 /** Update attraction rating when review changes */
 exports.updateAttractionRating = (0, firestore_1.onDocumentWritten)({ document: "reviews/{reviewId}", region: REGION }, async (event) => {

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { UserAvatar } from "@/components/chat/UserAvatar";
-import { getAllUsers, updateUserRole, getWalletForUser } from "@/lib/services/admin";
+import { getAllUsers, updateUserRole, getWalletForUser, disableUser, forceLogoutUser } from "@/lib/services/admin";
 import { updateUserSpendingLimits } from "@/lib/services/cloudFunctions";
 import { parseFirestoreTime } from "@/lib/firestoreTime";
 import { format } from "date-fns";
@@ -194,6 +194,26 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3 space-x-2">
                   <Button size="sm" variant="outline" onClick={() => openUser(u)}>View</Button>
                   <Button size="sm" variant="ghost" onClick={() => openLimits(u.uid)}>Limits</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      await forceLogoutUser(u.uid);
+                      alert("Sessions revoked. The user will be signed out on next refresh.");
+                    }}
+                  >
+                    Force logout
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={u.disabled ? "outline" : "danger"}
+                    onClick={async () => {
+                      await disableUser(u.uid, !u.disabled);
+                      setUsers(await getAllUsers());
+                    }}
+                  >
+                    {u.disabled ? "Enable" : "Disable"}
+                  </Button>
                 </td>
               </tr>
             ))}

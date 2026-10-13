@@ -1,6 +1,39 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.expireLoyaltyPoints = exports.drawLottery = exports.purchaseLotteryTicket = exports.createLottery = exports.spendWorkBalance = exports.updateVendorProfile = void 0;
+exports.autoDrawDueLotteries = exports.expireLoyaltyPoints = exports.drawLottery = exports.purchaseLotteryTicket = exports.createLottery = exports.spendWorkBalance = exports.updateVendorProfile = void 0;
 /**
  * New feature Cloud Functions:
  *  - updateVendorProfile      (REQ-VND-001)
@@ -200,7 +233,8 @@ exports.drawLottery = (0, https_1.onCall)({ region: REGION }, async (request) =>
         .get();
     if (entriesSnap.empty)
         throw new https_1.HttpsError("failed-precondition", "No entries in this lottery");
-    const randomIndex = Math.floor(Math.random() * entriesSnap.docs.length);
+    const { randomInt } = await Promise.resolve().then(() => __importStar(require("crypto")));
+    const randomIndex = randomInt(0, entriesSnap.docs.length);
     const winnerEntry = entriesSnap.docs[randomIndex].data();
     const winnerId = winnerEntry.userId;
     await helpers_1.db.runTransaction(async (tx) => {
@@ -295,5 +329,36 @@ exports.expireLoyaltyPoints = (0, scheduler_1.onSchedule)({ schedule: "every 24 
         totalExpired += grantsSnap.size;
     }
     console.log(`Expired loyalty grants: ${totalExpired}`);
+});
+/** REQ-LOT-003: auto-draw lotteries whose drawDate has passed. */
+exports.autoDrawDueLotteries = (0, scheduler_1.onSchedule)({ schedule: "every 15 minutes", region: REGION }, async () => {
+    var _a, _b, _c;
+    const now = helpers_1.Timestamp.now();
+    const snap = await helpers_1.db.collection("lotteries").where("status", "==", "active").limit(50).get();
+    const { randomInt } = await Promise.resolve().then(() => __importStar(require("crypto")));
+    for (const lotteryDoc of snap.docs) {
+        const lottery = lotteryDoc.data();
+        const drawMs = (_c = (_b = (_a = lottery.drawDate) === null || _a === void 0 ? void 0 : _a.toMillis) === null || _b === void 0 ? void 0 : _b.call(_a)) !== null && _c !== void 0 ? _c : 0;
+        if (!drawMs || drawMs > now.toMillis())
+            continue;
+        const entriesSnap = await helpers_1.db.collection("lotteryEntries").where("lotteryId", "==", lotteryDoc.id).get();
+        if (entriesSnap.empty) {
+            await lotteryDoc.ref.update({
+                status: "closed",
+                drawnAt: helpers_1.FieldValue.serverTimestamp(),
+                drawnBy: "scheduler",
+            });
+            continue;
+        }
+        const winnerEntry = entriesSnap.docs[randomInt(0, entriesSnap.docs.length)].data();
+        const winnerId = winnerEntry.userId;
+        await lotteryDoc.ref.update({
+            status: "drawn",
+            winnerId,
+            drawnAt: helpers_1.FieldValue.serverTimestamp(),
+            drawnBy: "scheduler",
+        });
+        await (0, helpers_1.createNotification)(winnerId, "You Won! 🎉", `Congratulations! You won the "${lottery.title}" lottery. Prize: ${lottery.prize}`, "lottery_win");
+    }
 });
 //# sourceMappingURL=features.js.map

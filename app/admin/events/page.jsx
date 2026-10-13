@@ -6,17 +6,25 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { getAllEventsAdmin } from "@/lib/services/events";
-import { moderateEvent } from "@/lib/services/cloudFunctions";
+import { moderateEvent, linkEventToAttraction } from "@/lib/services/cloudFunctions";
+import { getAttractions } from "@/lib/services/places";
 import { format } from "date-fns";
 
 export default function AdminEventsPage() {
   const [events, setEvents] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(false);
+  const [attractions, setAttractions] = useState([]);
+  const [linkFor, setLinkFor] = useState("");
+  const [attractionId, setAttractionId] = useState("");
 
   useEffect(() => {
     getAllEventsAdmin(statusFilter || undefined).then(setEvents);
   }, [statusFilter]);
+
+  useEffect(() => {
+    getAttractions(80).then(setAttractions).catch(() => setAttractions([]));
+  }, []);
 
   async function toggleFeature(eventId, featured) {
     setLoading(true);
@@ -66,7 +74,7 @@ export default function AdminEventsPage() {
                 <td className="px-4 py-3 text-[var(--color-fg)]">
                   {e.isFeatured ? "Yes" : "No"}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-2">
                   {e.status === "approved" && (
                     <Button
                       size="sm"
@@ -77,6 +85,9 @@ export default function AdminEventsPage() {
                       {e.isFeatured ? "Unfeature" : "Feature"}
                     </Button>
                   )}
+                  <Button size="sm" variant="ghost" onClick={() => { setLinkFor(e.id); setAttractionId(e.attractionRef ?? ""); }}>
+                    Link place
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -86,6 +97,41 @@ export default function AdminEventsPage() {
           <p className="p-4 text-[var(--color-muted)]">No events found.</p>
         )}
       </div>
+
+      {linkFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--color-card)] p-5 shadow-lg">
+            <h3 className="mb-3 font-semibold">Link event to attraction</h3>
+            <Select
+              options={[
+                { value: "", label: "Select attraction" },
+                ...attractions.map((a) => ({ value: a.id, label: a.name })),
+              ]}
+              value={attractionId}
+              onChange={(e) => setAttractionId(e.target.value)}
+            />
+            <div className="mt-4 flex gap-2">
+              <Button
+                loading={loading}
+                disabled={!attractionId}
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    await linkEventToAttraction(linkFor, attractionId);
+                    setLinkFor("");
+                    getAllEventsAdmin(statusFilter || undefined).then(setEvents);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              >
+                Save
+              </Button>
+              <Button variant="outline" onClick={() => setLinkFor("")}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

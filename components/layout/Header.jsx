@@ -21,6 +21,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { cn } from "@/lib/utils/cn";
 import { isAdmin } from "@/lib/firebase/auth";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 const navLinks = [
   { href: "/events", label: "Events", icon: Calendar },
@@ -33,25 +34,29 @@ const navLinks = [
 
 export function Header() {
   const pathname = usePathname();
-  const { profile, loading } = useAuth();
+  const { profile, loading, firebaseUser } = useAuth();
+  const firebaseEmailUnverified = Boolean(firebaseUser && !firebaseUser.emailVerified && firebaseUser.email);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[var(--color-border-light)] bg-[var(--color-card)]/95 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-lg font-bold text-[var(--color-primary)]"
-        >
-          <MapPin className="h-5 w-5" />
-          <span className="hidden sm:inline">Local App</span>
-        </Link>
+    <header className="sticky top-0 z-40 border-b border-[var(--color-border-light)] bg-[var(--color-secondary)]/90 backdrop-blur-md">
+      {profile && firebaseEmailUnverified && (
+        <div className="bg-[var(--color-warning-light)] px-4 py-2 text-center text-xs text-[var(--color-warning-fg)]">
+          Verify your email to keep this account active.{" "}
+          <button type="button" className="font-semibold underline" onClick={() => import("@/lib/firebase/auth").then((m) => m.sendEmailVerificationLink())}>
+            Resend link
+          </button>
+        </div>
+      )}
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+        <BrandMark />
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-0.5 lg:flex">
           {navLinks.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
+              prefetch
               className={cn(
                 "flex items-center gap-1.5 rounded-[var(--radius-lg)] px-3 py-2 text-sm font-medium transition-colors",
                 pathname.startsWith(href)
@@ -65,39 +70,40 @@ export function Header() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {!loading && profile ? (
             <>
               {isAdmin(profile) && (
                 <Link
                   href="/admin"
-                  className="flex items-center gap-1.5 rounded-[var(--radius-lg)] px-2 py-1.5 text-sm font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]"
-                  title="Admin Dashboard"
+                  className="hidden items-center gap-1.5 rounded-[var(--radius-lg)] px-2 py-1.5 text-sm font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] sm:flex"
+                  title="Admin"
                 >
-                  <Shield className="h-5 w-5" />
-                  <span className="hidden md:inline">Admin</span>
+                  <Shield className="h-4 w-4" />
+                  <span className="hidden xl:inline">Admin</span>
                 </Link>
               )}
               <Link
                 href="/chat"
-                className="hidden rounded-[var(--radius-lg)] p-2 text-[var(--color-muted)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)] sm:block"
+                className="relative rounded-[var(--radius-lg)] p-2 text-[var(--color-muted)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]"
                 title="Messages"
               >
                 <MessageCircle className="h-5 w-5" />
               </Link>
               <Link
                 href="/wallet"
-                className="hidden rounded-[var(--radius-lg)] p-2 text-[var(--color-muted)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)] sm:block"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-primary)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-primary-hover)]"
                 title="Wallet"
               >
-                <Wallet className="h-5 w-5" />
+                <Wallet className="h-3.5 w-3.5 text-sky-100" />
+                Wallet
               </Link>
               <Link
                 href="/profile"
                 className="flex items-center gap-2 rounded-[var(--radius-lg)] px-2 py-1.5 text-sm font-medium text-[var(--color-fg)] hover:bg-[var(--color-primary-light)]"
               >
                 <User className="h-5 w-5" />
-                <span className="hidden max-w-[120px] truncate sm:inline">
+                <span className="hidden max-w-[120px] truncate md:inline">
                   {profile.displayName}
                 </span>
               </Link>
@@ -115,7 +121,7 @@ export function Header() {
           )}
           <button
             type="button"
-            className="rounded-[var(--radius-lg)] p-2 text-[var(--color-muted)] hover:bg-[var(--color-border-light)] md:hidden"
+            className="rounded-[var(--radius-lg)] p-2 text-[var(--color-muted)] hover:bg-[var(--color-border-light)] lg:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label={mobileOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileOpen}
@@ -126,7 +132,7 @@ export function Header() {
       </div>
 
       {mobileOpen && (
-        <nav className="border-t border-[var(--color-border-light)] bg-[var(--color-card)] px-4 py-3 md:hidden">
+        <nav className="border-t border-[var(--color-border-light)] bg-[var(--color-card)] px-4 py-3 lg:hidden">
           {navLinks.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
@@ -146,18 +152,11 @@ export function Header() {
           {profile && (
             <>
               <Link
-                href="/chat"
+                href="/profile/family"
                 onClick={() => setMobileOpen(false)}
                 className="flex items-center gap-2 rounded-[var(--radius-lg)] px-3 py-2.5 text-sm text-[var(--color-muted)]"
               >
-                <MessageCircle className="h-4 w-4" /> Messages
-              </Link>
-              <Link
-                href="/wallet"
-                onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-2 rounded-[var(--radius-lg)] px-3 py-2.5 text-sm text-[var(--color-muted)]"
-              >
-                <Wallet className="h-4 w-4" /> Wallet
+                Family account
               </Link>
               {isAdmin(profile) && (
                 <Link
